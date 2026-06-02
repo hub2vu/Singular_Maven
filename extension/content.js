@@ -74,6 +74,14 @@
     return getAuthorFromElement(first(".gall_writer, .ub-writer, [data-uid], .writer"));
   }
 
+  function getCommentNodes() {
+    return all(".cmt_list li, .comment_wrap .ub-content, [id^='comment_li_'], [id^='reply_li_']");
+  }
+
+  function getCommentAuthorElement(node) {
+    return first(".nickname, .name, .user_name, .gall_writer, .writer_nikcon, [data-uid], [data-user-id]", node);
+  }
+
   function getBodyRoot() {
     return first(".write_div, .writing_view_box, .view_content_wrap article, article");
   }
@@ -89,7 +97,7 @@
 
   function getComments() {
     const seen = new Set();
-    return all(".cmt_list li, .comment_wrap .ub-content, [id^='comment_li_'], [id^='reply_li_']")
+    return getCommentNodes()
       .filter((node) => {
         const id = node.id || textOf(node).slice(0, 80);
         if (seen.has(id)) return false;
@@ -102,7 +110,7 @@
         const authorIdentity = getAuthorFromElement(node);
         return {
           id,
-          author: authorIdentity?.name || textOf(first(".name, .nickname, .user_name, .gall_writer", node)),
+          author: authorIdentity?.name || textOf(getCommentAuthorElement(node)),
           authorIdentity,
           date: textOf(first(".date_time, .gall_date, .date", node)),
           text: textOf(textNode) || textOf(node),
@@ -110,6 +118,78 @@
         };
       })
       .filter((comment) => comment.text);
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function waitFor(predicate, timeoutMs = 1200) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() <= deadline) {
+      const value = predicate();
+      if (value) return value;
+      await sleep(80);
+    }
+    return undefined;
+  }
+
+  function visibleTextElements() {
+    return all("h1, h2, h3, h4, strong, b, span, p, div, label, a, button")
+      .filter((element) => element instanceof HTMLElement && isVisible(element));
+  }
+
+  function findClickableByText(pattern) {
+    return all("a, button, [role='button'], li, span")
+      .filter((element) => element instanceof HTMLElement && isVisible(element))
+      .find((element) => pattern.test(textOf(element)));
+  }
+
+  function findMemoUid() {
+    for (const element of visibleTextElements()) {
+      const match = textOf(element).match(/([A-Za-z][A-Za-z0-9_-]{2,})\s*메모/u);
+      if (match?.[1] && !/user|member|memo/i.test(match[1])) return match[1];
+    }
+    return undefined;
+  }
+
+  async function resolveCommentUidFromMemo(commentNode) {
+    const authorElement = getCommentAuthorElement(commentNode);
+    if (!(authorElement instanceof HTMLElement)) return undefined;
+    authorElement.click();
+    const memoButton = await waitFor(() => findClickableByText(/이용자\s*메모/u));
+    if (!(memoButton instanceof HTMLElement)) return undefined;
+    memoButton.click();
+    return waitFor(findMemoUid, 1600);
+  }
+
+  async function resolveCommentUids(observation) {
+    const sourceObservation = observation || collectObservation();
+    const comments = (sourceObservation.comments || []).map((comment) => ({
+      ...comment,
+      authorIdentity: comment.authorIdentity ? { ...comment.authorIdentity } : undefined
+    }));
+    const nodes = getCommentNodes();
+
+    for (let index = 0; index < comments.length; index += 1) {
+      const comment = comments[index];
+      if (comment.authorIdentity?.uid) continue;
+      const node = (comment.id && document.getElementById(comment.id)) || nodes[index];
+      if (!node) continue;
+      const uid = await resolveCommentUidFromMemo(node);
+      if (!uid) continue;
+      const authorIdentity = comment.authorIdentity || getAuthorFromElement(node) || { name: comment.author || undefined };
+      comment.authorIdentity = {
+        ...authorIdentity,
+        uid,
+        raw: normalize(`${authorIdentity.raw || comment.author || ""} uid:${uid}`)
+      };
+    }
+
+    return {
+      ...sourceObservation,
+      comments
+    };
   }
 
   function isLikelyAdImage(image) {
@@ -257,6 +337,14 @@
         sendResponse({ ok: true, observation: collectObservation() });
         return true;
       }
+      if (message?.type === "MAVEN_RESOLVE_COMMENT_UIDS") {
+        resolveCommentUids(message.observation).then((observation) => {
+          sendResponse({ ok: true, observation });
+        }).catch((error) => {
+          sendResponse({ ok: false, reason: String(error?.message || error), observation: message.observation || collectObservation() });
+        });
+        return true;
+      }
       if (message?.type === "MAVEN_SAFE_ACTION") {
         sendResponse(safeAction(message.action || {}));
         return true;
@@ -266,5 +354,6 @@
   }
 
   window.__dcMavenCollectObservationForTest = collectObservation;
+  window.__dcMavenResolveCommentUidsForTest = resolveCommentUids;
   window.__dcMavenSafeActionForTest = safeAction;
 })();

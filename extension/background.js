@@ -44,7 +44,20 @@ async function sendMessageWithContentScript(tab, message) {
 
 async function observeActiveTab() {
   const tab = await activeTab();
-  const observed = await sendMessageWithContentScript(tab, { type: "MAVEN_COLLECT_OBSERVATION" });
+  let observed = await sendMessageWithContentScript(tab, { type: "MAVEN_COLLECT_OBSERVATION" });
+  try {
+    const uidResolved = await sendMessageWithContentScript(tab, {
+      type: "MAVEN_RESOLVE_COMMENT_UIDS",
+      observation: observed.observation
+    });
+    if (uidResolved?.ok && uidResolved.observation) {
+      observed = { ...observed, observation: uidResolved.observation };
+    } else if (uidResolved?.reason) {
+      observed = { ...observed, uidResolutionError: uidResolved.reason };
+    }
+  } catch (error) {
+    observed = { ...observed, uidResolutionError: String(error?.message || error) };
+  }
   try {
     const screenshotDataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
     return { ...observed, screenshotDataUrl };
@@ -55,6 +68,47 @@ async function observeActiveTab() {
       screenshotError: String(error?.message || error)
     };
   }
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return globalThis.btoa(binary);
+}
+
+async function imageToDataUrl(image, pageUrl) {
+  const response = await fetch(image.src, {
+    credentials: "include",
+    referrer: pageUrl || undefined
+  });
+  if (!response.ok) {
+    throw new Error(`image fetch failed ${response.status}`);
+  }
+  const blob = await response.blob();
+  if (!String(blob.type || "").startsWith("image/")) {
+    throw new Error(`image fetch returned non-image content-type: ${blob.type || "unknown"}`);
+  }
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  return `data:${blob.type};base64,${bytesToBase64(bytes)}`;
+}
+
+async function inlineImageUrls(images, pageUrl) {
+  const inlined = [];
+  const failures = [];
+  for (const image of images || []) {
+    try {
+      inlined.push({
+        ...image,
+        dataUrl: image.dataUrl || await imageToDataUrl(image, pageUrl)
+      });
+    } catch (error) {
+      failures.push({ src: image.src, reason: String(error?.message || error) });
+    }
+  }
+  return { ok: inlined.length > 0, images: inlined, failures };
 }
 
 async function safeActionOnActiveTab(action) {
@@ -119,6 +173,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
     if (message?.type === "MAVEN_SAFE_ACTION") {
       sendResponse(await safeActionOnActiveTab(message.action || {}));
+      return;
+    }
+    if (message?.type === "MAVEN_INLINE_IMAGE_URLS") {
+      sendResponse(await inlineImageUrls(message.images || [], message.pageUrl));
       return;
     }
     if (message?.type === "MAVEN_ENSURE_BACKEND") {

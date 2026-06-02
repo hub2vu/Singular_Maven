@@ -40,7 +40,6 @@ interface RawCorpus {
 const TAG_KEYWORDS: Record<string, string[]> = {
   "이왜특/갤무관": ["이왜특", "갤무관", "특이점과 무관", "무관한", "뻘글"],
   "정떡": ["정떡", "정치", "대통령", "국힘", "민주당", "좌파", "우파", "정치글"],
-  "닉언콘/친목": ["닉언콘", "닉언", "친목", "@", "좆목"],
   "완장고로시": ["완장", "고로시", "파딱", "주딱", "매니저", "부매니저"],
   "도배기/역류기": ["도배기", "역류기", "도배", "공격", "방어", "댓글방어", "게시물방어"],
   "이미지 리스크": ["혐짤", "야짤", "이미지", "캡처", "짤", "gif"],
@@ -51,28 +50,6 @@ const TAG_KEYWORDS: Record<string, string[]> = {
 };
 
 const SEED_DOCS: Array<Omit<PolicyDocument, "id" | "source_type">> = [
-  {
-    rule_id: "seed-nickcon-after-2026-06-01",
-    source_post_no: "1224888",
-    title: "2026-06-01 이후 닉언콘 친목 처리",
-    body: "2026-06-01 이후 닉언콘 사용은 친목질로 보고 31일 차단 후보로 검토한다.",
-    comments: [],
-    image_urls: [],
-    links: [],
-    excerpt: "2026-06-01 이후 닉언콘은 친목질로 보고 31일 차단 후보.",
-    tags: ["닉언콘/친목", "요주의 계정/IP/VPN"]
-  },
-  {
-    rule_id: "seed-nickcon-supporting-posts",
-    source_post_no: "1224783",
-    title: "닉언콘 관련 보조 근거",
-    body: "닉언콘과 친목성 호출은 최신 운영 방침상 강하게 제한한다. 관련 근거 글번호: 1224783, 1224760, 1225924, 1224960, 1216079.",
-    comments: [],
-    image_urls: [],
-    links: [],
-    excerpt: "닉언콘과 친목성 호출은 최신 운영 방침상 강하게 제한.",
-    tags: ["닉언콘/친목"]
-  },
   {
     rule_id: "seed-bot-defense-range",
     source_post_no: "1226405",

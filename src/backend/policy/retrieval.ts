@@ -3,7 +3,6 @@ import type { ModerationObservation, PolicyCorpus, PolicyDocument, PolicyEvidenc
 const ISSUE_KEYWORDS: Record<string, string[]> = {
   "이왜특/갤무관": ["이왜특", "갤무관", "무관", "특이점"],
   "정떡": ["정떡", "정치", "대통령", "국힘", "민주당", "좌파", "우파"],
-  "닉언콘/친목": ["닉언콘", "닉언", "친목", "@", "좆목"],
   "완장고로시": ["완장", "고로시", "파딱", "주딱", "매니저", "부매니저"],
   "도배기/역류기": ["도배기", "역류기", "도배", "방어", "댓글방어", "게시물방어"],
   "이미지 리스크": ["혐짤", "이미지", "캡처", "짤"],
@@ -63,7 +62,6 @@ function scoreDocument(doc: PolicyDocument, queryTokens: Set<string>, queryTags:
     if (doc.tags.includes(tag)) score += doc.source_type === "seed" ? 10 : 2.5;
   }
   if (rawQuery.includes("@특갤봇") && doc.tags.includes("특갤봇 명령 후보")) score += 8;
-  if (rawQuery.includes("닉언콘") && doc.rule_id.includes("nickcon")) score += 20;
   if (/댓글방어|게시물방어|방어\(/u.test(rawQuery) && doc.source_post_no === "1226405") score += 8;
   if (rawQuery.includes(doc.source_post_no)) score += 6;
   return score;

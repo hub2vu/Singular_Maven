@@ -12,6 +12,8 @@ export interface JudgeObservationOptions {
   evidence: PolicyEvidence[];
   screenshotDataUrl?: string;
   imageUrls?: string[];
+  imageSourceUrls?: string[];
+  imageInputKinds?: Array<"url" | "data-url">;
   dataDir?: string;
   model?: string;
   promptMode?: "page" | "uploaded-images";
@@ -58,6 +60,17 @@ async function saveScreenshot(dataDir: string, auditId: string, screenshotDataUr
   return screenshotPath;
 }
 
+function auditImageRefs(imageUrls: string[], sourceUrls?: string[]): string[] {
+  return imageUrls.map((url, index) => {
+    if (url.startsWith("data:image/")) return sourceUrls?.[index] ?? "data:image/[inline]";
+    return url;
+  });
+}
+
+function auditImageInputKinds(imageUrls: string[], kinds?: Array<"url" | "data-url">): Array<"url" | "data-url"> {
+  return kinds ?? imageUrls.map((url) => url.startsWith("data:image/") ? "data-url" : "url");
+}
+
 export async function judgeObservation(options: JudgeObservationOptions): Promise<JudgeObservationResult> {
   const timestamp = new Date().toISOString();
   const dataDir = options.dataDir ?? path.join(process.cwd(), "data");
@@ -93,7 +106,8 @@ export async function judgeObservation(options: JudgeObservationOptions): Promis
     retrievedPolicyRefs: options.evidence,
     llmInput: prompt,
     llmOutput: card,
-    attachedImageUrls: imageUrls,
+    attachedImageUrls: auditImageRefs(imageUrls, options.imageSourceUrls),
+    attachedImageInputKinds: auditImageInputKinds(imageUrls, options.imageInputKinds),
     screenshotPath
   });
   await writeFile(auditPath, JSON.stringify(auditRecord, null, 2), "utf8");

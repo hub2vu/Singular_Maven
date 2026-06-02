@@ -50,7 +50,8 @@ const observationSchema = z.object({
   images: z.array(z.object({
     src: z.string(),
     alt: z.string().optional(),
-    nearbyText: z.string().optional()
+    nearbyText: z.string().optional(),
+    dataUrl: z.string().optional()
   })),
   links: z.array(z.object({
     href: z.string(),
@@ -117,7 +118,8 @@ function uploadedPostImages(observation: ModerationObservation): ObservationImag
     .map((image) => ({
       src: image.src.trim(),
       alt: image.alt,
-      nearbyText: image.nearbyText
+      nearbyText: image.nearbyText,
+      dataUrl: image.dataUrl
     }))
     .filter((image) => {
       if (!image.src || seen.has(image.src)) return false;
@@ -239,15 +241,22 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
     const imageObservation: ModerationObservation = {
       ...observation,
-      images
+      images: images.map((image) => ({
+        src: image.src,
+        alt: image.alt,
+        nearbyText: image.nearbyText
+      }))
     };
+    const imageInputs = images.map((image) => image.dataUrl || image.src);
     const ingested = await ensureCorpus();
     const evidence = retrievePolicyEvidence(ingested, imageObservation, 12);
     const mockEnabled = options.mockLlm ?? process.env.MAVEN_ALLOW_MOCK_LLM === "1";
     const provider = mockEnabled ? makeMockJudgeProvider() : makeOpenAIJudgeProvider();
     const result = await judgeObservation({
       observation: imageObservation,
-      imageUrls: images.map((image) => image.src),
+      imageUrls: imageInputs,
+      imageSourceUrls: images.map((image) => image.src),
+      imageInputKinds: images.map((image) => image.dataUrl ? "data-url" : "url"),
       evidence,
       dataDir,
       model: resolveJudgeModel(body.model ?? process.env.OPENAI_MODEL),

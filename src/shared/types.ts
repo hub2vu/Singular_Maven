@@ -1,7 +1,6 @@
 export type IssueType =
   | "이왜특/갤무관"
   | "정떡"
-  | "닉언콘/친목"
   | "완장고로시"
   | "도배기/역류기"
   | "이미지 리스크"
@@ -37,6 +36,7 @@ export interface ObservationImage {
   src: string;
   alt?: string;
   nearbyText?: string;
+  dataUrl?: string;
 }
 
 export interface ObservationLink {

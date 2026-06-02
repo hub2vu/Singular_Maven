@@ -433,6 +433,20 @@
     renderActions();
   }
 
+  async function inlineObservationImages(observation) {
+    const images = Array.isArray(observation.images) ? observation.images : [];
+    if (!images.length) return observation;
+    const result = await sendMessage({ type: "MAVEN_INLINE_IMAGE_URLS", images, pageUrl: observation.url });
+    if (!result?.ok || !Array.isArray(result.images) || result.images.length === 0) {
+      const failures = (result?.failures || []).map((item) => `${item.src}: ${item.reason}`).join("; ");
+      throw new Error(`업로드 이미지를 LLM 입력용으로 불러오지 못했습니다.${failures ? ` ${failures}` : ""}`);
+    }
+    return {
+      ...observation,
+      images: result.images
+    };
+  }
+
   async function judgeCurrentPage() {
     setError("");
     storeRuntimeSettings();
@@ -466,12 +480,13 @@
       if (!Array.isArray(observation.images) || observation.images.length === 0) {
         throw new Error("이 게시글 본문에서 작성자 업로드 이미지를 찾지 못했습니다.");
       }
+      const imageObservation = await inlineObservationImages(observation);
 
       const result = await fetchJson("/api/judge/images", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          observation,
+          observation: imageObservation,
           model: selectedModel()
         })
       });

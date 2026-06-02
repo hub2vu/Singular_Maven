@@ -5,7 +5,6 @@ import type { JudgePrompt, JudgmentCard, ModerationObservation, PolicyEvidence }
 const issueTypeSchema = z.enum([
   "이왜특/갤무관",
   "정떡",
-  "닉언콘/친목",
   "완장고로시",
   "도배기/역류기",
   "이미지 리스크",
@@ -62,7 +61,7 @@ export interface CreateJudgePromptOptions {
 function schemaSkeleton(): string {
   return JSON.stringify({
     summary: "string",
-    issue_types: ["이왜특/갤무관 | 정떡 | 닉언콘/친목 | 완장고로시 | 도배기/역류기 | 이미지 리스크 | 수익/홍보/강의팔이 | 타커뮤 캡처/조롱 | 요주의 계정/IP/VPN | 특갤봇 명령 후보"],
+    issue_types: ["이왜특/갤무관 | 정떡 | 완장고로시 | 도배기/역류기 | 이미지 리스크 | 수익/홍보/강의팔이 | 타커뮤 캡처/조롱 | 요주의 계정/IP/VPN | 특갤봇 명령 후보"],
     matched_rules: [{ rule_id: "string", source_post_no: "string", title: "string", excerpt: "string", relevance: 0.0, tags: ["string"] }],
     llm_reasoning: "string",
     uncertainty: "string",
@@ -105,6 +104,7 @@ export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePromp
     "",
     "JUDGMENT REQUIREMENTS:",
     "- Compare current-page quotes against policy evidence source_post_no values side by side.",
+    "- 닉언콘/친목 조항은 비활성화되었습니다. 단순 이모티콘, 콘, 스티커, 닉네임 언급만으로 삭제 후보나 차단 후보를 만들지 마세요.",
     ...(uploadedImageMode ? [
       "- Judge only the author-uploaded images listed in CURRENT PAGE OBSERVATION.images and attached as image_url inputs.",
       "- Exclude DCInside ads, banners, UI elements, profile icons, recommendation widgets, and unrelated page chrome from the judgment.",
