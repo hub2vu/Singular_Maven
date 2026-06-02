@@ -56,6 +56,7 @@ export interface CreateJudgePromptOptions {
   evidence: PolicyEvidence[];
   model: string;
   visionEnabled: boolean;
+  mode?: "page" | "uploaded-images";
 }
 
 function schemaSkeleton(): string {
@@ -76,9 +77,12 @@ function schemaSkeleton(): string {
 
 export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePrompt {
   const redactedObservation = redactObservation(options.observation);
-  const imageMode = options.visionEnabled
-    ? "visible screenshot may be attached separately; still cite text/DOM evidence when possible"
-    : "vision is not configured: 이미지 판단은 텍스트/alt/문맥 기반, 시각 확인 필요";
+  const uploadedImageMode = options.mode === "uploaded-images";
+  const imageMode = uploadedImageMode
+    ? "uploaded post images only: attached images are from observation.images; ignore DCInside ads, banners, UI chrome, profile icons, recommendation widgets, and any full-page screenshot"
+    : options.visionEnabled
+      ? "visible screenshot may be attached separately; still cite text/DOM evidence when possible"
+      : "vision is not configured: 이미지 판단은 텍스트/alt/문맥 기반, 시각 확인 필요";
 
   const system = [
     "You are a read-only DCInside moderation copilot for a human sub-manager.",
@@ -101,6 +105,12 @@ export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePromp
     "",
     "JUDGMENT REQUIREMENTS:",
     "- Compare current-page quotes against policy evidence source_post_no values side by side.",
+    ...(uploadedImageMode ? [
+      "- Judge only the author-uploaded images listed in CURRENT PAGE OBSERVATION.images and attached as image_url inputs.",
+      "- Exclude DCInside ads, banners, UI elements, profile icons, recommendation widgets, and unrelated page chrome from the judgment.",
+      "- If an image is risky, cite it with location image[index]/src plus nearbyText or alt when available.",
+      "- If the attached images do not show a policy problem, return a low-risk or hold recommendation with explicit visual uncertainty."
+    ] : []),
     "- If recommending a bot command, only propose text for the human to copy. Do not claim it was sent.",
     "- For @특갤봇 게시물방어(n), 댓글방어(n), 방어(n), n must be 1..10.",
     "- For @특갤봇 게시물번호, treat it only as a specific-post push-down candidate.",

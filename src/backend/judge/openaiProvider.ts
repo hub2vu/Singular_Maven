@@ -14,6 +14,7 @@ export interface LlmProviderInput {
   model: string;
   evidence: PolicyEvidence[];
   screenshotDataUrl?: string;
+  imageUrls?: string[];
   visionEnabled: boolean;
 }
 
@@ -43,16 +44,20 @@ function extractOutputText(response: any): string {
   throw new Error("openai-oauth response did not include text output");
 }
 
-function buildUserContent(prompt: JudgePrompt, screenshotDataUrl: string | undefined, visionEnabled: boolean): any {
-  if (!visionEnabled || !screenshotDataUrl) return prompt.user;
+function buildUserContent(prompt: JudgePrompt, options: { screenshotDataUrl?: string; imageUrls?: string[]; visionEnabled: boolean }): any {
+  if (!options.visionEnabled) return prompt.user;
+  const imageUrls = (options.imageUrls ?? []).filter(Boolean);
+  const fallbackScreenshot = imageUrls.length ? undefined : options.screenshotDataUrl;
+  const attachments = [...imageUrls, ...(fallbackScreenshot ? [fallbackScreenshot] : [])];
+  if (!attachments.length) return prompt.user;
   return [
     { type: "text", text: prompt.user },
-    { type: "image_url", image_url: { url: screenshotDataUrl } }
+    ...attachments.map((url) => ({ type: "image_url", image_url: { url } }))
   ];
 }
 
 export function makeOpenAIJudgeProvider(options: OpenAIJudgeProviderOptions = {}): LlmProvider {
-  return async ({ prompt, model, screenshotDataUrl, visionEnabled }) => {
+  return async ({ prompt, model, screenshotDataUrl, imageUrls, visionEnabled }) => {
     const status = await ensureOpenAIOAuthProxy({
       baseUrl: options.baseUrl,
       port: options.port,
@@ -68,7 +73,7 @@ export function makeOpenAIJudgeProvider(options: OpenAIJudgeProviderOptions = {}
         model: options.model ?? model,
         messages: [
           { role: "system", content: prompt.system },
-          { role: "user", content: buildUserContent(prompt, screenshotDataUrl, visionEnabled) }
+          { role: "user", content: buildUserContent(prompt, { screenshotDataUrl, imageUrls, visionEnabled }) }
         ],
         temperature: 0.2
       })

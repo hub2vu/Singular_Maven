@@ -81,8 +81,9 @@ Maven Copilot은 OpenAI API key나 수동으로 붙여넣은 bearer token을 저
 3. Maven side panel을 엽니다.
 4. 필요하면 `Start OAuth proxy`를 누릅니다.
 5. 모델을 선택합니다.
-6. `이 페이지 LLM 판단`을 누릅니다.
-7. 판단 카드, policy evidence, local member risk, audit log를 확인합니다.
+6. 텍스트/댓글/정책 근거 중심 검토는 `이 페이지 LLM 판단`을 누릅니다.
+7. 게시글 작성자가 업로드한 이미지 자체를 별도로 보려면 `이미지 LLM 판단`을 누릅니다. 이 버튼은 DCInside 광고, 배너, UI 이미지를 제외하고 본문 업로드 이미지 URL만 LLM 비전 입력으로 보냅니다.
+8. 판단 카드, policy evidence, local member risk, audit log를 확인합니다.
 
 ## 저장 위치
 

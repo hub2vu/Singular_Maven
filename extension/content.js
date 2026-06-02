@@ -75,7 +75,7 @@
   }
 
   function getBodyRoot() {
-    return first(".write_div, .writing_view_box, .view_content_wrap article, article") || document.body;
+    return first(".write_div, .writing_view_box, .view_content_wrap article, article");
   }
 
   function getCounts() {
@@ -112,8 +112,34 @@
       .filter((comment) => comment.text);
   }
 
+  function isLikelyAdImage(image) {
+    const src = String(image.currentSrc || image.src || "").toLowerCase();
+    const alt = String(image.alt || image.getAttribute("title") || "").toLowerCase();
+    const context = String([
+      image.id,
+      image.className,
+      image.closest("[id], [class]")?.id,
+      image.closest("[id], [class]")?.className,
+      image.closest("aside, iframe, ins, [data-ad], .adsbygoogle, .ad_wrap, .ad_box, .banner, .advertise, .sponsor")?.outerHTML?.slice(0, 300)
+    ].filter(Boolean).join(" ")).toLowerCase();
+    const haystack = `${src} ${alt} ${context}`;
+    if (/(^|[/_.-])(ad|ads|adn|banner|sponsor|advert|doubleclick|googlesyndication|adfit|criteo|taboola|outbrain)([/_.-]|$)/iu.test(haystack)) {
+      return true;
+    }
+    if (image.closest("aside, iframe, ins, [data-ad], .adsbygoogle, .ad_wrap, .ad_box, .banner, .advertise, .sponsor")) {
+      return true;
+    }
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (width > 0 && height > 0 && (width <= 8 || height <= 8)) {
+      return true;
+    }
+    return false;
+  }
+
   function getImages(bodyRoot) {
-    return all("img", bodyRoot).map((image) => ({
+    if (!bodyRoot) return [];
+    return all("img", bodyRoot).filter((image) => !isLikelyAdImage(image)).map((image) => ({
       src: image.currentSrc || image.src,
       alt: image.alt || image.getAttribute("title") || "",
       nearbyText: normalize(image.closest("p, div, figure, article, section")?.textContent || "")
@@ -121,6 +147,7 @@
   }
 
   function getLinks(bodyRoot) {
+    if (!bodyRoot) return [];
     return all("a[href]", bodyRoot).map((link) => ({
       href: link.href,
       text: textOf(link)
@@ -157,6 +184,7 @@
 
   function collectObservation() {
     const bodyRoot = getBodyRoot();
+    const textRoot = bodyRoot || document.body;
     const bodyText = textOf(bodyRoot);
     return {
       url: location.href,
@@ -167,8 +195,8 @@
       author: getAuthor(),
       createdAtText: textOf(first(".gall_date, .date_time, .date")) || undefined,
       counts: getCounts(),
-      bodyText,
-      htmlExcerpt: normalize(bodyRoot.innerHTML).slice(0, 12000),
+      bodyText: bodyText || textOf(textRoot),
+      htmlExcerpt: normalize(textRoot.innerHTML).slice(0, 12000),
       comments: getComments(),
       images: getImages(bodyRoot),
       links: getLinks(bodyRoot),

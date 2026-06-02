@@ -5,7 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { assertSafeAutomationAction, IRREVERSIBLE_DENYLIST } from "../shared/safety.js";
-import type { ModerationObservation, PolicyCorpus } from "../shared/types.js";
+import type { ModerationObservation, ObservationImage, PolicyCorpus } from "../shared/types.js";
 import { openAIOAuthProxyStatus } from "./auth/openaiOAuthProxy.js";
 import { auditDecision, judgeObservation } from "./judge/pipeline.js";
 import { makeMockJudgeProvider, makeOpenAIJudgeProvider } from "./judge/openaiProvider.js";
@@ -95,9 +95,36 @@ const MAVEN_CAPABILITIES = {
   features: [
     "members.observe",
     "openai-oauth-proxy",
-    "judge.model-select"
+    "judge.model-select",
+    "judge.uploaded-images"
   ]
 } as const;
+
+const AD_IMAGE_PATTERN = /(^|[/_.\-\s])(ad|ads|adn|adfit|advert|advertise|banner|sponsor|doubleclick|googlesyndication|criteo|taboola|outbrain|tracking|beacon|pixel|logo|icon)([/_.\-\s]|$)/iu;
+
+function isUsableImageUrl(src: string): boolean {
+  return /^https?:\/\//iu.test(src) || /^data:image\//iu.test(src);
+}
+
+function isLikelyAdOrChromeImage(image: ObservationImage): boolean {
+  const haystack = `${image.src} ${image.alt ?? ""} ${image.nearbyText ?? ""}`.toLowerCase();
+  return AD_IMAGE_PATTERN.test(haystack);
+}
+
+function uploadedPostImages(observation: ModerationObservation): ObservationImage[] {
+  const seen = new Set<string>();
+  return observation.images
+    .map((image) => ({
+      src: image.src.trim(),
+      alt: image.alt,
+      nearbyText: image.nearbyText
+    }))
+    .filter((image) => {
+      if (!image.src || seen.has(image.src)) return false;
+      seen.add(image.src);
+      return isUsableImageUrl(image.src) && !isLikelyAdOrChromeImage(image);
+    });
+}
 
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const server = Fastify({ logger: true });
@@ -188,6 +215,51 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       auditId: result.auditId,
       card: result.card,
       screenshotPath: result.screenshotPath
+    };
+  });
+
+  server.post("/api/judge/images", async (request, reply) => {
+    const body = judgeRequestSchema.parse(request.body);
+    if (body.model !== undefined && !isAllowedJudgeModel(body.model)) {
+      return reply.code(400).send({
+        error: "Unsupported judge model",
+        model: body.model,
+        allowedModels: ALLOWED_JUDGE_MODELS
+      });
+    }
+
+    const observation = body.observation as ModerationObservation;
+    const images = uploadedPostImages(observation);
+    if (!images.length) {
+      return reply.code(400).send({
+        error: "No uploaded post images found",
+        message: "No uploaded post images remained after excluding ad-like, UI, and tracking images."
+      });
+    }
+
+    const imageObservation: ModerationObservation = {
+      ...observation,
+      images
+    };
+    const ingested = await ensureCorpus();
+    const evidence = retrievePolicyEvidence(ingested, imageObservation, 12);
+    const mockEnabled = options.mockLlm ?? process.env.MAVEN_ALLOW_MOCK_LLM === "1";
+    const provider = mockEnabled ? makeMockJudgeProvider() : makeOpenAIJudgeProvider();
+    const result = await judgeObservation({
+      observation: imageObservation,
+      imageUrls: images.map((image) => image.src),
+      evidence,
+      dataDir,
+      model: resolveJudgeModel(body.model ?? process.env.OPENAI_MODEL),
+      promptMode: "uploaded-images",
+      visionEnabled: true,
+      llmProvider: provider
+    });
+    return {
+      auditId: result.auditId,
+      card: result.card,
+      imageCount: images.length,
+      attachedImageUrls: images.map((image) => image.src)
     };
   });
 

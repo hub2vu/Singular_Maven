@@ -11,8 +11,10 @@ export interface JudgeObservationOptions {
   observation: ModerationObservation;
   evidence: PolicyEvidence[];
   screenshotDataUrl?: string;
+  imageUrls?: string[];
   dataDir?: string;
   model?: string;
+  promptMode?: "page" | "uploaded-images";
   visionEnabled?: boolean;
   llmProvider?: LlmProvider;
 }
@@ -65,13 +67,15 @@ export async function judgeObservation(options: JudgeObservationOptions): Promis
   const observationHash = sha256(JSON.stringify(redactedObservation));
   const auditId = `${timestamp.replace(/[:.]/gu, "-")}_${observationHash.slice(0, 12)}`;
   const screenshotPath = await saveScreenshot(dataDir, auditId, options.screenshotDataUrl);
-  const prompt = createJudgePrompt({ observation: redactedObservation, evidence: options.evidence, model, visionEnabled });
+  const imageUrls = (options.imageUrls ?? []).filter(Boolean);
+  const prompt = createJudgePrompt({ observation: redactedObservation, evidence: options.evidence, model, visionEnabled, mode: options.promptMode ?? "page" });
   const provider = options.llmProvider ?? makeOpenAIJudgeProvider();
   const rawCard = await provider({
     prompt,
     model,
     evidence: options.evidence,
-    screenshotDataUrl: visionEnabled ? options.screenshotDataUrl : undefined,
+    screenshotDataUrl: visionEnabled && imageUrls.length === 0 ? options.screenshotDataUrl : undefined,
+    imageUrls: visionEnabled ? imageUrls : undefined,
     visionEnabled
   });
   const card = validateJudgeCard(rawCard);
@@ -89,6 +93,7 @@ export async function judgeObservation(options: JudgeObservationOptions): Promis
     retrievedPolicyRefs: options.evidence,
     llmInput: prompt,
     llmOutput: card,
+    attachedImageUrls: imageUrls,
     screenshotPath
   });
   await writeFile(auditPath, JSON.stringify(auditRecord, null, 2), "utf8");

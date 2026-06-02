@@ -28,6 +28,7 @@
   const backendUrlInput = document.querySelector("#backendUrl");
   const modelSelect = document.querySelector("#modelSelect");
   const judgeButton = document.querySelector("#judgeButton");
+  const imageJudgeButton = document.querySelector("#imageJudgeButton");
   const startProxyButton = document.querySelector("#startProxyButton");
   const authStatus = document.querySelector("#authStatus");
   const oauthPanel = document.querySelector("#oauthPanel");
@@ -116,7 +117,7 @@
     return `stale backend: ${backendUrlInput.value} is an older Maven backend. Stop the old process on this port, then restart it with npm run dev:backend or reload the extension native host.`;
   }
 
-  async function ensureBackendCompatible() {
+  async function ensureBackendCompatible(extraRequiredFeatures = []) {
     let capabilities;
     try {
       capabilities = await fetchJson("/api/capabilities");
@@ -129,7 +130,7 @@
     }
 
     const features = Array.isArray(capabilities?.features) ? capabilities.features : [];
-    const required = ["members.observe", "openai-oauth-proxy", "judge.model-select"];
+    const required = ["members.observe", "openai-oauth-proxy", "judge.model-select", ...extraRequiredFeatures];
     const missing = required.filter((feature) => !features.includes(feature));
     if (missing.length) {
       throw new Error(`${staleBackendMessage()} Missing features: ${missing.join(", ")}`);
@@ -388,44 +389,98 @@
     authStatus.textContent = `human decision logged: ${outcome}`;
   }
 
-  async function judgeCurrentPage() {
-    setError("");
+  function setJudgmentBusy(activeButton, busyText) {
+    judgeButton.disabled = true;
+    imageJudgeButton.disabled = true;
+    activeButton.textContent = busyText;
+  }
+
+  function clearJudgmentBusy() {
+    judgeButton.disabled = false;
+    imageJudgeButton.disabled = false;
+    judgeButton.textContent = "이 페이지 LLM 판단";
+    imageJudgeButton.textContent = "이미지 LLM 판단";
+  }
+
+  async function observeCurrentPage(extraRequiredFeatures = []) {
+    await fetchJson("/health");
+    await ensureBackendCompatible(extraRequiredFeatures);
+    const observed = await sendMessage({ type: "MAVEN_OBSERVE_ACTIVE_TAB" });
+    if (!observed?.ok) throw new Error(observed?.reason || "active tab observation failed");
+    state.observation = observed.observation;
+    state.screenshotDataUrl = observed.screenshotDataUrl;
+    renderSummary(state.observation);
+    await refreshMembers(state.observation);
+    return state.observation;
+  }
+
+  function storeRuntimeSettings() {
     localStorage.setItem("mavenBackendUrl", backendUrlInput.value);
     localStorage.setItem("mavenJudgeModel", selectedModel());
-    judgeButton.disabled = true;
-    judgeButton.textContent = "판단 중";
+  }
+
+  function handleJudgeError(error) {
+    if (String(error?.message || error).includes("openai-oauth")) {
+      showOAuthPanel({ configured: false, proxyReady: false, autoStart: true, oauthPort: 10531 });
+    }
+    setError(String(error?.message || error));
+  }
+
+  function renderJudgmentResult(result) {
+    state.card = result.card;
+    state.auditId = result.auditId;
+    renderCard(state.card);
+    renderActions();
+  }
+
+  async function judgeCurrentPage() {
+    setError("");
+    storeRuntimeSettings();
+    setJudgmentBusy(judgeButton, "판단 중");
     try {
-      await fetchJson("/health");
-      await ensureBackendCompatible();
-      const observed = await sendMessage({ type: "MAVEN_OBSERVE_ACTIVE_TAB" });
-      if (!observed?.ok) throw new Error(observed?.reason || "active tab observation failed");
-      state.observation = observed.observation;
-      state.screenshotDataUrl = observed.screenshotDataUrl;
-      renderSummary(state.observation);
-      await refreshMembers(state.observation);
+      await observeCurrentPage();
 
       const result = await fetchJson("/api/judge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           observation: state.observation,
-          model: selectedModel(),
-          ...(state.screenshotDataUrl ? { screenshotDataUrl: state.screenshotDataUrl } : {})
+          model: selectedModel()
         })
       });
-      state.card = result.card;
-      state.auditId = result.auditId;
-      renderCard(state.card);
-      renderActions();
+      renderJudgmentResult(result);
       await refreshStatus();
     } catch (error) {
-      if (String(error?.message || error).includes("openai-oauth")) {
-        showOAuthPanel({ configured: false, proxyReady: false, autoStart: true, oauthPort: 10531 });
-      }
-      setError(String(error?.message || error));
+      handleJudgeError(error);
     } finally {
-      judgeButton.disabled = false;
-      judgeButton.textContent = "이 페이지 LLM 판단";
+      clearJudgmentBusy();
+    }
+  }
+
+  async function judgeCurrentImages() {
+    setError("");
+    storeRuntimeSettings();
+    setJudgmentBusy(imageJudgeButton, "이미지 판단 중");
+    try {
+      const observation = await observeCurrentPage(["judge.uploaded-images"]);
+      if (!Array.isArray(observation.images) || observation.images.length === 0) {
+        throw new Error("이 게시글 본문에서 작성자 업로드 이미지를 찾지 못했습니다.");
+      }
+
+      const result = await fetchJson("/api/judge/images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          observation,
+          model: selectedModel()
+        })
+      });
+      renderJudgmentResult(result);
+      await refreshStatus();
+    } catch (error) {
+      handleJudgeError(error);
+    } finally {
+      clearJudgmentBusy();
     }
   }
 
@@ -438,6 +493,7 @@
     authStatus.textContent = `selected model 쨌 ${selectedModel()}`;
   });
   judgeButton.addEventListener("click", judgeCurrentPage);
+  imageJudgeButton.addEventListener("click", judgeCurrentImages);
   startProxyButton.addEventListener("click", ensureOpenAIOAuthProxy);
   refreshStatus();
 })();
