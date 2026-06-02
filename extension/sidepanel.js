@@ -11,6 +11,7 @@
 
   const DEFAULT_JUDGE_MODELS = [
     "gpt-5.5",
+    "gpt-5.5-mini",
     "gpt-5.4",
     "gpt-5.4-mini",
     "gpt-5.3-codex",
@@ -19,6 +20,7 @@
   ];
   const MODEL_LABELS = {
     "gpt-5.5": "GPT-5.5",
+    "gpt-5.5-mini": "GPT-5.5-Mini",
     "gpt-5.4": "GPT-5.4",
     "gpt-5.4-mini": "GPT-5.4-Mini",
     "gpt-5.3-codex": "GPT-5.3-Codex",
