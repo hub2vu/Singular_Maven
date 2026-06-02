@@ -1,0 +1,129 @@
+import { z } from "zod";
+import { redactObservation } from "../../shared/redaction.js";
+import type { JudgePrompt, JudgmentCard, ModerationObservation, PolicyEvidence } from "../../shared/types.js";
+
+const issueTypeSchema = z.enum([
+  "이왜특/갤무관",
+  "정떡",
+  "닉언콘/친목",
+  "완장고로시",
+  "도배기/역류기",
+  "이미지 리스크",
+  "수익/홍보/강의팔이",
+  "타커뮤 캡처/조롱",
+  "요주의 계정/IP/VPN",
+  "특갤봇 명령 후보"
+]);
+
+const recommendedActionTypeSchema = z.enum(["삭제 후보", "차단 후보", "보류", "공지", "특갤봇 명령 후보"]);
+
+export const policyEvidenceSchema = z.object({
+  rule_id: z.string().min(1),
+  source_post_no: z.string().min(1),
+  title: z.string().min(1),
+  excerpt: z.string().min(1),
+  relevance: z.number().min(0).max(1),
+  tags: z.array(z.string())
+}).strict();
+
+export const judgmentCardSchema = z.object({
+  summary: z.string().min(1),
+  issue_types: z.array(issueTypeSchema),
+  matched_rules: z.array(policyEvidenceSchema),
+  llm_reasoning: z.string().min(1),
+  uncertainty: z.string().min(1),
+  false_positive_risk: z.string().min(1),
+  recommended_actions: z.array(z.object({
+    type: recommendedActionTypeSchema,
+    label: z.string().min(1),
+    rationale: z.string().min(1)
+  }).strict()),
+  current_page_evidence: z.array(z.object({
+    quote: z.string().min(1),
+    location: z.string().min(1)
+  }).strict()),
+  policy_evidence: z.array(z.object({
+    source_post_no: z.string().min(1),
+    quote: z.string().min(1),
+    rule_id: z.string().min(1)
+  }).strict()),
+  special_bot_command_candidates: z.array(z.string()),
+  final_human_decision_required: z.literal(true)
+}).strict();
+
+export interface CreateJudgePromptOptions {
+  observation: ModerationObservation;
+  evidence: PolicyEvidence[];
+  model: string;
+  visionEnabled: boolean;
+}
+
+function schemaSkeleton(): string {
+  return JSON.stringify({
+    summary: "string",
+    issue_types: ["이왜특/갤무관 | 정떡 | 닉언콘/친목 | 완장고로시 | 도배기/역류기 | 이미지 리스크 | 수익/홍보/강의팔이 | 타커뮤 캡처/조롱 | 요주의 계정/IP/VPN | 특갤봇 명령 후보"],
+    matched_rules: [{ rule_id: "string", source_post_no: "string", title: "string", excerpt: "string", relevance: 0.0, tags: ["string"] }],
+    llm_reasoning: "string",
+    uncertainty: "string",
+    false_positive_risk: "string",
+    recommended_actions: [{ type: "삭제 후보 | 차단 후보 | 보류 | 공지 | 특갤봇 명령 후보", label: "string", rationale: "string" }],
+    current_page_evidence: [{ quote: "string", location: "body/comment/image/link/meta" }],
+    policy_evidence: [{ source_post_no: "string", quote: "string", rule_id: "string" }],
+    special_bot_command_candidates: ["@특갤봇 댓글방어(3)"],
+    final_human_decision_required: true
+  }, null, 2);
+}
+
+export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePrompt {
+  const redactedObservation = redactObservation(options.observation);
+  const imageMode = options.visionEnabled
+    ? "visible screenshot may be attached separately; still cite text/DOM evidence when possible"
+    : "vision is not configured: 이미지 판단은 텍스트/alt/문맥 기반, 시각 확인 필요";
+
+  const system = [
+    "You are a read-only DCInside moderation copilot for a human sub-manager.",
+    "Never execute, recommend as final, or simulate irreversible moderation actions.",
+    "You must judge from the provided current-page observation plus policy evidence. Retrieval hints are evidence, not a rules-only verdict.",
+    "Always include final_human_decision_required: true.",
+    "Allowed actions are only candidates/copy/prefill/open-tab/save-evidence. Forbidden actions include submit/delete/ban/post/comment/confirm/save/apply clicks.",
+    "Return only valid JSON matching the requested schema."
+  ].join("\n");
+
+  const user = [
+    `Model target: ${options.model}`,
+    `Image handling: ${imageMode}`,
+    "",
+    "CURRENT PAGE OBSERVATION (redacted JSON):",
+    JSON.stringify(redactedObservation, null, 2),
+    "",
+    "RETRIEVED POLICY / EVIDENCE POSTS:",
+    JSON.stringify(options.evidence, null, 2),
+    "",
+    "JUDGMENT REQUIREMENTS:",
+    "- Compare current-page quotes against policy evidence source_post_no values side by side.",
+    "- If recommending a bot command, only propose text for the human to copy. Do not claim it was sent.",
+    "- For @특갤봇 게시물방어(n), 댓글방어(n), 방어(n), n must be 1..10.",
+    "- For @특갤봇 게시물번호, treat it only as a specific-post push-down candidate.",
+    "- For image risks without vision, mark visual uncertainty explicitly.",
+    "",
+    "STRICT JSON SCHEMA SHAPE:",
+    schemaSkeleton()
+  ].join("\n");
+
+  return { system, user };
+}
+
+export function parseJsonObject(text: string): unknown {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{")) return JSON.parse(trimmed);
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/iu);
+  if (fenced) return JSON.parse(fenced[1]);
+  const objectMatch = trimmed.match(/\{[\s\S]*\}/u);
+  if (objectMatch) return JSON.parse(objectMatch[0]);
+  throw new Error("LLM output did not contain a JSON object");
+}
+
+export function validateJudgeCard(input: unknown): JudgmentCard {
+  const parsed = typeof input === "string" ? parseJsonObject(input) : input;
+  return judgmentCardSchema.parse(parsed) as JudgmentCard;
+}

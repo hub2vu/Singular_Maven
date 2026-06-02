@@ -1,0 +1,6 @@
+node_modules/
+dist/
+data/
+.env
+*.log
+ID_비밀번호.txt
