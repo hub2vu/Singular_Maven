@@ -61,12 +61,27 @@
 
   function getAuthorFromElement(writer) {
     if (!writer) return undefined;
-    const name = textOf(first(".nickname, .name, .writer_nikcon", writer)) || textOf(writer);
+    const identityRoot = writer.matches?.(".gall_writer, .ub-writer, [data-uid], [data-user-id], [data-ip]")
+      ? writer
+      : first(".gall_writer, .ub-writer, [data-uid], [data-user-id], [data-ip]", writer);
+    const nameRoot = identityRoot || writer;
+    const name = textOf(first(".nickname, .name, .writer_nikcon", nameRoot)) ||
+      normalize(nameRoot.getAttribute?.("data-nick")) ||
+      textOf(nameRoot);
     return {
       name,
-      uid: writer.getAttribute("data-uid") || writer.getAttribute("data-user-id") || undefined,
-      ip: writer.getAttribute("data-ip") || writer.querySelector("[data-ip]")?.getAttribute("data-ip") || undefined,
-      raw: textOf(writer)
+      uid: identityRoot?.getAttribute("data-uid") ||
+        identityRoot?.getAttribute("data-user-id") ||
+        writer.getAttribute("data-uid") ||
+        writer.getAttribute("data-user-id") ||
+        writer.querySelector("[data-uid]")?.getAttribute("data-uid") ||
+        writer.querySelector("[data-user-id]")?.getAttribute("data-user-id") ||
+        undefined,
+      ip: writer.getAttribute("data-ip") ||
+        identityRoot?.getAttribute("data-ip") ||
+        writer.querySelector("[data-ip]")?.getAttribute("data-ip") ||
+        undefined,
+      raw: textOf(nameRoot)
     };
   }
 
@@ -146,8 +161,19 @@
   }
 
   function findMemoUid() {
-    for (const element of visibleTextElements()) {
-      const match = textOf(element).match(/([A-Za-z][A-Za-z0-9_-]{2,})\s*메모/u);
+    const candidates = [
+      document.title,
+      ...textOf(document.body).split(/\n| {2,}/u).slice(0, 30),
+      ...visibleTextElements().map((element) => textOf(element)),
+      ...all("input, textarea").map((element) => normalize(
+        element.value ||
+        element.getAttribute("placeholder") ||
+        element.getAttribute("title") ||
+        element.getAttribute("aria-label")
+      ))
+    ];
+    for (const candidate of candidates) {
+      const match = normalize(candidate).match(/([A-Za-z][A-Za-z0-9_-]{2,})\s*메모/u);
       if (match?.[1] && !/user|member|memo/i.test(match[1])) return match[1];
     }
     return undefined;
