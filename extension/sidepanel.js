@@ -311,6 +311,38 @@
     `;
   }
 
+  function renderCommentThreadAssessment(card) {
+    const assessment = card.comment_thread_assessment;
+    if (!assessment || typeof assessment !== "object") return "";
+    const users = Array.isArray(assessment.per_user) ? assessment.per_user : [];
+    const perUser = users.map((user) => {
+      const identity = [
+        user.display_name || user.user_key || "-",
+        user.uid ? `uid:${user.uid}` : "",
+        user.ip ? `ip:${user.ip}` : ""
+      ].filter(Boolean).join(" | ");
+      const indices = Array.isArray(user.comment_indices) ? user.comment_indices.join(", ") : "-";
+      const quotes = Array.isArray(user.evidence_quotes) ? user.evidence_quotes.map((quote) => `"${quote}"`).join("\n") : "-";
+      return `
+        <div class="quote">
+          <strong>${escapeHtml(identity)}</strong> / ${escapeHtml(user.role || "-")} / ${escapeHtml(user.risk_level || "-")}<br />
+          comments: ${escapeHtml(indices)}<br />
+          ${escapeHtml(user.rationale || "-")}<br />
+          evidence: ${escapeHtml(quotes)}
+        </div>
+      `;
+    }).join("");
+    return `
+      <h3 class="section-title">댓글 싸움 여부</h3>
+      <div class="quote">
+        <strong>${escapeHtml(assessment.fighting_likelihood || "-")}</strong><br />
+        ${escapeHtml(assessment.fighting_summary || "-")}
+      </div>
+      <h3 class="section-title">댓글러별 판단</h3>
+      ${perUser || "<p>-</p>"}
+    `;
+  }
+
   function renderCard(card) {
     cardPanel.innerHTML = `
       <h2 class="section-title">${escapeHtml(card.summary)}</h2>
@@ -319,6 +351,7 @@
       <p><strong>uncertainty</strong>: ${escapeHtml(card.uncertainty)}</p>
       <p><strong>false_positive_risk</strong>: ${escapeHtml(card.false_positive_risk)}</p>
       <p><strong>final_human_decision_required: true</strong></p>
+      ${renderCommentThreadAssessment(card)}
       ${renderEvidence(card)}
       <h3 class="section-title">matched rules</h3>
       ${renderRules(card.matched_rules)}
@@ -499,16 +532,57 @@
 
   function commentTextForPrompt(comments = []) {
     return comments.map((comment, index) => {
-      const author = comment.authorIdentity?.uid || comment.author || comment.authorIdentity?.name || "-";
+      const identity = comment.authorIdentity || {};
+      const author = comment.author || identity.name || "-";
+      const uid = identity.uid ? ` uid:${identity.uid}` : "";
       const ip = comment.authorIdentity?.ip ? ` ip:${comment.authorIdentity.ip}` : "";
       const date = comment.date ? ` ${comment.date}` : "";
-      return `[${index + 1}] ${author}${ip}${date}: ${comment.text}`;
+      return `[${index + 1}] ${author}${uid}${ip}${date}: ${comment.text}`;
     }).join("\n");
+  }
+
+  function commentUserKey(comment) {
+    const identity = comment.authorIdentity || {};
+    const name = comment.author || identity.name || "";
+    if (identity.uid) return `uid:${identity.uid}`;
+    if (identity.ip && name) return `ip-name:${identity.ip}:${name}`;
+    if (identity.ip) return `ip:${identity.ip}`;
+    if (name) return `name:${name}`;
+    return "name:unknown";
+  }
+
+  function commentAuthorGroups(comments = []) {
+    const groups = new Map();
+    comments.forEach((comment, index) => {
+      const identity = comment.authorIdentity || {};
+      const key = commentUserKey(comment);
+      const current = groups.get(key) || {
+        user_key: key,
+        display_name: comment.author || identity.name || "",
+        uid: identity.uid || "",
+        ip: identity.ip || "",
+        comment_indices: []
+      };
+      current.comment_indices.push(index + 1);
+      groups.set(key, current);
+    });
+    return Array.from(groups.values());
   }
 
   function commentOnlyObservation(observation) {
     const comments = Array.isArray(observation.comments) ? observation.comments : [];
-    const bodyText = commentTextForPrompt(comments);
+    const authorGroups = commentAuthorGroups(comments);
+    const commentText = commentTextForPrompt(comments);
+    const bodyText = [
+      "COMMENT JUDGMENT MODE",
+      "Assess fighting/escalation and each individual commenter.",
+      "",
+      "COMMENT AUTHOR GROUPS:",
+      JSON.stringify(authorGroups),
+      "",
+      "COMMENTS:",
+      commentText
+    ].join("\n");
     return {
       ...observation,
       title: `${observation.title} - 댓글 판단`,
@@ -522,7 +596,8 @@
       comments,
       metadata: {
         ...(observation.metadata || {}),
-        mavenJudgmentScope: "comments-only"
+        mavenJudgmentScope: "comments-only",
+        commentAuthorGroups: authorGroups
       }
     };
   }

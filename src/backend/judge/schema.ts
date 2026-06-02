@@ -30,6 +30,22 @@ export const policyEvidenceSchema = z.object({
   source_title: z.string().optional()
 }).strict();
 
+const commentThreadAssessmentSchema = z.object({
+  fighting_likelihood: z.enum(["low", "medium", "high"]),
+  fighting_summary: z.string().min(1),
+  per_user: z.array(z.object({
+    user_key: z.string().min(1),
+    display_name: z.string().optional(),
+    uid: z.string().optional(),
+    ip: z.string().optional(),
+    comment_indices: z.array(z.number().int().positive()),
+    role: z.enum(["aggressor", "target", "participant", "de-escalator", "neutral", "spam-or-bot"]),
+    risk_level: z.enum(["low", "watch", "high"]),
+    rationale: z.string().min(1),
+    evidence_quotes: z.array(z.string().min(1))
+  }).strict())
+}).strict();
+
 export const judgmentCardSchema = z.object({
   summary: z.string().min(1),
   issue_types: z.array(issueTypeSchema),
@@ -52,6 +68,7 @@ export const judgmentCardSchema = z.object({
     rule_id: z.string().min(1)
   }).strict()),
   special_bot_command_candidates: z.array(z.string()),
+  comment_thread_assessment: commentThreadAssessmentSchema.optional(),
   final_human_decision_required: z.literal(true)
 }).strict();
 
@@ -63,8 +80,8 @@ export interface CreateJudgePromptOptions {
   mode?: "page" | "uploaded-images";
 }
 
-function schemaSkeleton(): string {
-  return JSON.stringify({
+function schemaSkeleton(commentMode = false): string {
+  const skeleton: Record<string, unknown> = {
     summary: "string",
     issue_types: ["이왜특/갤무관 | 정떡 | 완장고로시 | 도배기/역류기 | 이미지 리스크 | 수익/홍보/강의팔이 | 타커뮤 캡처/조롱 | 요주의 계정/IP/VPN | 특갤봇 명령 후보"],
     matched_rules: [{ rule_id: "string", source_post_no: "string", title: "string", excerpt: "string", relevance: 0.0, tags: ["string"] }],
@@ -76,7 +93,25 @@ function schemaSkeleton(): string {
     policy_evidence: [{ source_post_no: "string", quote: "string", rule_id: "string" }],
     special_bot_command_candidates: ["@특갤봇 댓글방어(3)"],
     final_human_decision_required: true
-  }, null, 2);
+  };
+  if (commentMode) {
+    skeleton.comment_thread_assessment = {
+      fighting_likelihood: "low | medium | high",
+      fighting_summary: "string",
+      per_user: [{
+        user_key: "uid:example | ip-name:ip:name | ip:example | name:example",
+        display_name: "string",
+        uid: "string",
+        ip: "string",
+        comment_indices: [1],
+        role: "aggressor | target | participant | de-escalator | neutral | spam-or-bot",
+        risk_level: "low | watch | high",
+        rationale: "string",
+        evidence_quotes: ["string"]
+      }]
+    };
+  }
+  return JSON.stringify(skeleton, null, 2);
 }
 
 function compactPromptText(value: unknown, max = 180): string {
@@ -105,6 +140,7 @@ export function policyEvidenceForPrompt(evidence: PolicyEvidence[]): Array<{
 export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePrompt {
   const redactedObservation = redactObservation(options.observation);
   const uploadedImageMode = options.mode === "uploaded-images";
+  const commentMode = redactedObservation.metadata?.mavenJudgmentScope === "comments-only";
   const imageMode = uploadedImageMode
     ? "uploaded post images only: attached images are from observation.images; ignore DCInside ads, banners, UI chrome, profile icons, recommendation widgets, and any full-page screenshot"
     : options.visionEnabled
@@ -134,6 +170,14 @@ export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePromp
     "- Compare current-page quotes against policy evidence source_post_no values side by side.",
     "- 완장고로시는 '완장/파딱/주딱/매니저' 단어 단독이 아니라 운영진 앵커 + 공격/해임/친목/권력남용 프레임 + 반복/여론몰이/저신뢰 정황을 함께 본다.",
     "- 닉언콘/친목 조항은 비활성화되었습니다. 단순 이모티콘, 콘, 스티커, 닉네임 언급만으로 삭제 후보나 차단 후보를 만들지 마세요.",
+    ...(commentMode ? [
+      "- 댓글 판단 모드: CURRENT PAGE OBSERVATION.comments와 bodyText에 있는 댓글만 판단하고 본문/이미지 판단은 하지 않는다.",
+      "- 싸움 여부를 fighting_likelihood low/medium/high로 평가한다. 직접 지목, 비난/조롱/명령조, 반박이 오가는 흐름, 감정적 에스컬레이션을 함께 본다.",
+      "- 농담, 짧은 단발성 반박, 문맥상 장난인 표현은 싸움으로 과대판단하지 않는다.",
+      "- 개별 댓글러별로 uid > ip+name > ip > name 순서의 user_key를 정하고 per_user에 comment_indices, role, risk_level, rationale, evidence_quotes를 적는다.",
+      "- 같은 댓글러가 여러 댓글을 쓴 경우 합산 평가하되, 어떤 댓글 번호와 인용문 때문인지 반드시 남긴다.",
+      "- 댓글 판단 모드에서는 comment_thread_assessment를 반드시 채운다."
+    ] : []),
     ...(uploadedImageMode ? [
       "- Judge only the author-uploaded images listed in CURRENT PAGE OBSERVATION.images and attached as image_url inputs.",
       "- Exclude DCInside ads, banners, UI elements, profile icons, recommendation widgets, and unrelated page chrome from the judgment.",
@@ -146,7 +190,7 @@ export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePromp
     "- For image risks without vision, mark visual uncertainty explicitly.",
     "",
     "STRICT JSON SCHEMA SHAPE:",
-    schemaSkeleton()
+    schemaSkeleton(commentMode)
   ].join("\n");
 
   return { system, user };

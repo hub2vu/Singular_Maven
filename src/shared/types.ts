@@ -153,6 +153,36 @@ export interface PolicyEvidenceQuote {
   rule_id: string;
 }
 
+export type CommentFightingLikelihood = "low" | "medium" | "high";
+
+export type CommentUserRole =
+  | "aggressor"
+  | "target"
+  | "participant"
+  | "de-escalator"
+  | "neutral"
+  | "spam-or-bot";
+
+export type CommentUserRiskLevel = "low" | "watch" | "high";
+
+export interface CommentUserAssessment {
+  user_key: string;
+  display_name?: string;
+  uid?: string;
+  ip?: string;
+  comment_indices: number[];
+  role: CommentUserRole;
+  risk_level: CommentUserRiskLevel;
+  rationale: string;
+  evidence_quotes: string[];
+}
+
+export interface CommentThreadAssessment {
+  fighting_likelihood: CommentFightingLikelihood;
+  fighting_summary: string;
+  per_user: CommentUserAssessment[];
+}
+
 export interface JudgmentCard {
   summary: string;
   issue_types: IssueType[];
@@ -164,6 +194,7 @@ export interface JudgmentCard {
   current_page_evidence: PageEvidenceQuote[];
   policy_evidence: PolicyEvidenceQuote[];
   special_bot_command_candidates: string[];
+  comment_thread_assessment?: CommentThreadAssessment;
   final_human_decision_required: true;
 }
 
