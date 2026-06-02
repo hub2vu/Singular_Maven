@@ -112,6 +112,15 @@ function isLikelyAdOrChromeImage(image: ObservationImage): boolean {
   return AD_IMAGE_PATTERN.test(haystack);
 }
 
+function isLikelyPostPageUrl(src: string): boolean {
+  try {
+    const url = new URL(src);
+    return /(^|\.)gall\.dcinside\.com$/iu.test(url.hostname) && /\/board\/view\//iu.test(url.pathname);
+  } catch {
+    return true;
+  }
+}
+
 function uploadedPostImages(observation: ModerationObservation): ObservationImage[] {
   const seen = new Set<string>();
   return observation.images
@@ -124,7 +133,7 @@ function uploadedPostImages(observation: ModerationObservation): ObservationImag
     .filter((image) => {
       if (!image.src || seen.has(image.src)) return false;
       seen.add(image.src);
-      return isUsableImageUrl(image.src) && !isLikelyAdOrChromeImage(image);
+      return isUsableImageUrl(image.src) && !isLikelyPostPageUrl(image.src) && !isLikelyAdOrChromeImage(image);
     });
 }
 

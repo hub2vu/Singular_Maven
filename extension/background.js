@@ -80,6 +80,9 @@ function bytesToBase64(bytes) {
 }
 
 async function imageToDataUrl(image, pageUrl) {
+  if (isPageUrlImageCandidate(image.src, pageUrl)) {
+    throw new Error("skipped page URL because it is not an image source");
+  }
   const response = await fetch(image.src, {
     credentials: "include",
     referrer: pageUrl || undefined
@@ -93,6 +96,18 @@ async function imageToDataUrl(image, pageUrl) {
   }
   const bytes = new Uint8Array(await blob.arrayBuffer());
   return `data:${blob.type};base64,${bytesToBase64(bytes)}`;
+}
+
+function isPageUrlImageCandidate(src, pageUrl) {
+  if (!src) return true;
+  try {
+    const source = new URL(src, pageUrl || undefined);
+    const page = pageUrl ? new URL(pageUrl) : undefined;
+    if (page && source.href === page.href) return true;
+    return /(^|\.)gall\.dcinside\.com$/iu.test(source.hostname) && /\/board\/view\//iu.test(source.pathname);
+  } catch {
+    return true;
+  }
 }
 
 async function inlineImageUrls(images, pageUrl) {

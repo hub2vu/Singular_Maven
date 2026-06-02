@@ -217,13 +217,39 @@
     return false;
   }
 
+  function imageSourceCandidate(image) {
+    const rawSource = normalize(
+      image.getAttribute("src") ||
+      image.getAttribute("data-src") ||
+      image.getAttribute("data-original") ||
+      image.getAttribute("data-lazy-src") ||
+      image.getAttribute("srcset")
+    );
+    if (!rawSource && !image.currentSrc) return "";
+    const resolved = image.currentSrc || image.src;
+    if (!resolved) return "";
+    try {
+      const resolvedUrl = new URL(resolved, location.href);
+      if (resolvedUrl.href === location.href) return "";
+      if (/^https?:$/iu.test(resolvedUrl.protocol) && /(^|\.)gall\.dcinside\.com$/iu.test(resolvedUrl.hostname) && /\/board\/view\//iu.test(resolvedUrl.pathname)) {
+        return "";
+      }
+      return resolvedUrl.href;
+    } catch {
+      return "";
+    }
+  }
+
   function getImages(bodyRoot) {
     if (!bodyRoot) return [];
-    return all("img", bodyRoot).filter((image) => !isLikelyAdImage(image)).map((image) => ({
-      src: image.currentSrc || image.src,
-      alt: image.alt || image.getAttribute("title") || "",
-      nearbyText: normalize(image.closest("p, div, figure, article, section")?.textContent || "")
-    })).filter((image) => image.src);
+    return all("img", bodyRoot)
+      .filter((image) => !isLikelyAdImage(image))
+      .map((image) => ({
+        src: imageSourceCandidate(image),
+        alt: image.alt || image.getAttribute("title") || "",
+        nearbyText: normalize(image.closest("p, div, figure, article, section")?.textContent || "")
+      }))
+      .filter((image) => image.src);
   }
 
   function getLinks(bodyRoot) {
