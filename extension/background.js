@@ -79,6 +79,27 @@ function bytesToBase64(bytes) {
   return globalThis.btoa(binary);
 }
 
+function imageMimeFromSource(src, fallbackType) {
+  if (String(fallbackType || "").startsWith("image/")) return fallbackType;
+  try {
+    const url = new URL(src);
+    const filename = decodeURIComponent(url.searchParams.get("f_no") || url.pathname);
+    const extension = filename.match(/\.([a-z0-9]+)(?:$|[?#])/iu)?.[1]?.toLowerCase();
+    const mimeByExtension = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      webp: "image/webp",
+      bmp: "image/bmp",
+      avif: "image/avif"
+    };
+    return extension ? mimeByExtension[extension] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function imageToDataUrl(image, pageUrl) {
   if (isPageUrlImageCandidate(image.src, pageUrl)) {
     throw new Error("skipped page URL because it is not an image source");
@@ -91,11 +112,12 @@ async function imageToDataUrl(image, pageUrl) {
     throw new Error(`image fetch failed ${response.status}`);
   }
   const blob = await response.blob();
-  if (!String(blob.type || "").startsWith("image/")) {
+  const mimeType = imageMimeFromSource(image.src, blob.type);
+  if (!mimeType) {
     throw new Error(`image fetch returned non-image content-type: ${blob.type || "unknown"}`);
   }
   const bytes = new Uint8Array(await blob.arrayBuffer());
-  return `data:${blob.type};base64,${bytesToBase64(bytes)}`;
+  return `data:${mimeType};base64,${bytesToBase64(bytes)}`;
 }
 
 function isPageUrlImageCandidate(src, pageUrl) {

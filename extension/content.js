@@ -266,16 +266,49 @@
     }
   }
 
+  function isImageLikeFilename(value) {
+    try {
+      const url = new URL(value, location.href);
+      const fno = url.searchParams.get("f_no") || "";
+      return /\.(png|jpe?g|gif|webp|bmp|avif)$/iu.test(decodeURIComponent(fno || url.pathname));
+    } catch {
+      return /\.(png|jpe?g|gif|webp|bmp|avif)$/iu.test(value);
+    }
+  }
+
+  function getAttachmentImages() {
+    return all(".appending_file_box .appending_file a[href], .appending_file a[href]")
+      .map((link) => {
+        const href = link.href;
+        const label = textOf(link) || link.getAttribute("download") || href;
+        return {
+          src: href,
+          alt: label,
+          nearbyText: normalize(`${textOf(link.closest(".appending_file_box")) || "원본 첨부파일"} ${label}`)
+        };
+      })
+      .filter((image) => image.src && isImageLikeFilename(image.alt || image.src));
+  }
+
+  function uniqueImages(images) {
+    const seen = new Set();
+    return images.filter((image) => {
+      if (!image.src || seen.has(image.src)) return false;
+      seen.add(image.src);
+      return true;
+    });
+  }
+
   function getImages(bodyRoot) {
-    if (!bodyRoot) return [];
-    return all("img", bodyRoot)
+    const bodyImages = bodyRoot ? all("img", bodyRoot)
       .filter((image) => !isLikelyAdImage(image))
       .map((image) => ({
         src: imageSourceCandidate(image),
         alt: image.alt || image.getAttribute("title") || "",
         nearbyText: normalize(image.closest("p, div, figure, article, section")?.textContent || "")
       }))
-      .filter((image) => image.src);
+      .filter((image) => image.src) : [];
+    return uniqueImages([...bodyImages, ...getAttachmentImages()]);
   }
 
   function getLinks(bodyRoot) {
