@@ -91,6 +91,8 @@ Maven Copilot은 OpenAI API key나 수동으로 붙여넣은 bearer token을 저
 
 이미지 판단은 원격 DC 이미지 URL을 그대로 LLM에 맡기지 않고, DCInside 이미지 호스트의 경우 backend가 게시글 URL을 Referer로 붙여 다시 다운로드한 뒤 0바이트가 아닌지 확인하고 `data:image/...` 입력으로 변환합니다. 이 방식은 LLM 서버가 DC 이미지 URL을 직접 다운로드하다가 빈 파일이나 404를 받는 문제를 피하기 위한 것입니다.
 
+맨 아래 `현재 맥락에서 질문` 입력창을 사용하면 현재 게시글 관측값, 최근 판단 카드, local policy evidence, 최근 대화 이력을 같은 맥락으로 묶어 후속 질문을 할 수 있습니다.
+
 ## 저장 위치
 
 실행 중 생성되는 파일은 `data/` 아래에 저장됩니다.

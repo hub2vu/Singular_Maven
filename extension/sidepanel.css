@@ -17,6 +17,9 @@ body {
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .topbar {
@@ -52,7 +55,8 @@ p {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--line);
@@ -61,6 +65,13 @@ select {
   font-size: 13px;
   background: #ffffff;
   color: var(--text);
+}
+
+textarea {
+  min-height: 44px;
+  max-height: 120px;
+  resize: vertical;
+  font-family: inherit;
 }
 
 button {
@@ -93,6 +104,7 @@ main {
   padding: 12px;
   display: grid;
   gap: 12px;
+  flex: 1;
 }
 
 .panel {
@@ -203,6 +215,51 @@ main {
 
 .auth-panel[hidden] {
   display: none;
+}
+
+.context-chat {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.context-chat-messages {
+  display: grid;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.context-message {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 8px;
+  background: #f8fafc;
+  overflow-wrap: anywhere;
+}
+
+.context-message.user {
+  background: var(--chip);
+  border-color: #c7e7e2;
+}
+
+.context-message.assistant {
+  background: #ffffff;
+}
+
+.context-question-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.context-question-form button {
+  min-height: 44px;
 }
 
 @media (max-width: 420px) {

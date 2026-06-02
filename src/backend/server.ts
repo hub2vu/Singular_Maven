@@ -4,11 +4,12 @@ import Fastify, { type FastifyInstance } from "fastify";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { redactObservation } from "../shared/redaction.js";
 import { assertSafeAutomationAction, IRREVERSIBLE_DENYLIST } from "../shared/safety.js";
 import type { ModerationObservation, ObservationImage, PolicyCorpus } from "../shared/types.js";
 import { openAIOAuthProxyStatus } from "./auth/openaiOAuthProxy.js";
 import { auditDecision, judgeObservation } from "./judge/pipeline.js";
-import { makeMockJudgeProvider, makeOpenAIJudgeProvider } from "./judge/openaiProvider.js";
+import { makeMockJudgeProvider, makeOpenAIJudgeProvider, makeOpenAITextProvider } from "./judge/openaiProvider.js";
 import { ALLOWED_JUDGE_MODELS, isAllowedJudgeModel, resolveJudgeModel } from "./judge/models.js";
 import { isMemberRiskLevel, MemberProfileStore } from "./members/profiles.js";
 import { discoverPolicyPath } from "./policy/pathDiscovery.js";
@@ -69,6 +70,18 @@ const judgeRequestSchema = z.object({
   screenshotDataUrl: z.string().nullable().optional()
 });
 
+const contextChatRequestSchema = z.object({
+  observation: observationSchema,
+  question: z.string().trim().min(1).max(4000),
+  model: z.string().optional(),
+  card: z.unknown().optional(),
+  auditId: z.string().optional(),
+  history: z.array(z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string().min(1).max(8000)
+  }).strict()).max(12).optional()
+});
+
 const decisionRequestSchema = z.object({
   auditId: z.string().min(1),
   decision: z.object({
@@ -97,7 +110,8 @@ const MAVEN_CAPABILITIES = {
     "members.observe",
     "openai-oauth-proxy",
     "judge.model-select",
-    "judge.uploaded-images"
+    "judge.uploaded-images",
+    "context.chat"
   ]
 } as const;
 
@@ -199,6 +213,42 @@ async function loadUploadedImageInputs(images: ObservationImage[], pageUrl?: str
     }
   }
   return { loaded, failures };
+}
+
+function createContextChatPrompt(options: {
+  observation: ModerationObservation;
+  question: string;
+  evidence: unknown[];
+  card?: unknown;
+  auditId?: string;
+}): { system: string; user: string } {
+  const system = [
+    "You are a read-only DCInside Maven Copilot follow-up assistant.",
+    "Answer the user's question using the current page observation, latest judgment card, and retrieved policy evidence.",
+    "Do not execute or claim to execute moderation actions. Do not tell the user that deletion, ban, submit, or comment actions were completed.",
+    "Keep final decisions human-only. If evidence is insufficient, say so plainly.",
+    "Answer in Korean unless the user asks for another language."
+  ].join("\n");
+  const user = [
+    "USER QUESTION:",
+    options.question,
+    "",
+    `AUDIT ID: ${options.auditId || "-"}`,
+    "",
+    "CURRENT PAGE OBSERVATION (redacted JSON):",
+    JSON.stringify(redactObservation(options.observation), null, 2),
+    "",
+    "LATEST JUDGMENT CARD (if present):",
+    JSON.stringify(options.card ?? null, null, 2),
+    "",
+    "RETRIEVED POLICY / EVIDENCE POSTS:",
+    JSON.stringify(options.evidence, null, 2)
+  ].join("\n");
+  return { system, user };
+}
+
+function mockContextAnswer(question: string, observation: ModerationObservation): string {
+  return `mock context answer: ${observation.title} 기준으로 "${question}"에 답하려면 현재 본문, 댓글, 이미지 후보, 최근 판단 카드, policy evidence를 함께 확인해야 합니다. 최종 조치는 사람이 결정해야 합니다.`;
 }
 
 function isLikelyAdOrChromeImage(image: ObservationImage): boolean {
@@ -382,6 +432,43 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       imageCount: loadedImages.length,
       attachedImageUrls: loadedImages.map((image) => image.src),
       imageLoadFailures: imageInputs.failures
+    };
+  });
+
+  server.post("/api/chat/context", async (request, reply) => {
+    const body = contextChatRequestSchema.parse(request.body);
+    if (body.model !== undefined && !isAllowedJudgeModel(body.model)) {
+      return reply.code(400).send({
+        error: "Unsupported judge model",
+        model: body.model,
+        allowedModels: ALLOWED_JUDGE_MODELS
+      });
+    }
+
+    const observation = body.observation as ModerationObservation;
+    const model = resolveJudgeModel(body.model ?? process.env.OPENAI_MODEL);
+    const ingested = await ensureCorpus();
+    const evidence = retrievePolicyEvidence(ingested, observation, 10);
+    const prompt = createContextChatPrompt({
+      observation,
+      question: body.question,
+      evidence,
+      card: body.card,
+      auditId: body.auditId
+    });
+    const mockEnabled = options.mockLlm ?? process.env.MAVEN_ALLOW_MOCK_LLM === "1";
+    const answer = mockEnabled
+      ? mockContextAnswer(body.question, observation)
+      : await makeOpenAITextProvider()({
+        ...prompt,
+        model,
+        history: body.history
+      });
+
+    return {
+      answer,
+      model,
+      evidenceCount: evidence.length
     };
   });
 

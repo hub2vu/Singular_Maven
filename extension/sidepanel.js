@@ -5,7 +5,8 @@
     observation: null,
     screenshotDataUrl: null,
     card: null,
-    auditId: null
+    auditId: null,
+    contextMessages: []
   };
 
   const DEFAULT_JUDGE_MODELS = [
@@ -38,6 +39,10 @@
   const cardPanel = document.querySelector("#cardPanel");
   const actionsPanel = document.querySelector("#actionsPanel");
   const errorPanel = document.querySelector("#errorPanel");
+  const contextQuestionForm = document.querySelector("#contextQuestionForm");
+  const contextQuestionInput = document.querySelector("#contextQuestionInput");
+  const contextAskButton = document.querySelector("#contextAskButton");
+  const contextChatMessages = document.querySelector("#contextChatMessages");
 
   backendUrlInput.value = localStorage.getItem("mavenBackendUrl") || backendUrlInput.value;
 
@@ -195,6 +200,10 @@
       }
       authStatus.textContent = `${result.proxyReady ? "proxy ready" : "proxy starting"} | ${result.proxyCommand || "npx -y openai-oauth --port 10531"}`;
       await refreshStatus();
+      if (result.proxyReady) {
+        oauthPanel.hidden = true;
+        authStatus.textContent = `openai-oauth-proxy | ${selectedModel()} | proxy ready`;
+      }
     } catch (error) {
       setError(String(error?.message || error));
     } finally {
@@ -311,6 +320,16 @@
     `;
   }
 
+  function renderContextMessages() {
+    contextChatMessages.innerHTML = state.contextMessages.map((message) => `
+      <div class="context-message ${escapeHtml(message.role)}">
+        <strong>${message.role === "user" ? "질문" : "답변"}</strong><br />
+        ${escapeHtml(message.content)}
+      </div>
+    `).join("");
+    contextChatMessages.scrollTop = contextChatMessages.scrollHeight;
+  }
+
   function reasonText() {
     if (!state.card) return "";
     return [
@@ -400,6 +419,12 @@
     imageJudgeButton.disabled = false;
     judgeButton.textContent = "이 페이지 LLM 판단";
     imageJudgeButton.textContent = "이미지 LLM 판단";
+  }
+
+  function setContextBusy(isBusy) {
+    contextAskButton.disabled = isBusy;
+    contextQuestionInput.disabled = isBusy;
+    contextAskButton.textContent = isBusy ? "질문 중" : "질문";
   }
 
   async function observeCurrentPage(extraRequiredFeatures = []) {
@@ -500,6 +525,49 @@
     }
   }
 
+  async function askContextQuestion(event) {
+    event.preventDefault();
+    const question = contextQuestionInput.value.trim();
+    if (!question) return;
+    setError("");
+    storeRuntimeSettings();
+    setContextBusy(true);
+    const history = state.contextMessages.slice(-8);
+    state.contextMessages.push({ role: "user", content: question });
+    renderContextMessages();
+    contextQuestionInput.value = "";
+    try {
+      if (!state.observation) {
+        await observeCurrentPage(["context.chat"]);
+      } else {
+        await fetchJson("/health");
+        await ensureBackendCompatible(["context.chat"]);
+      }
+      const result = await fetchJson("/api/chat/context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          observation: state.observation,
+          card: state.card,
+          auditId: state.auditId,
+          question,
+          history,
+          model: selectedModel()
+        })
+      });
+      state.contextMessages.push({ role: "assistant", content: result.answer || "(empty answer)" });
+      renderContextMessages();
+      authStatus.textContent = `context answer | ${result.model || selectedModel()}`;
+    } catch (error) {
+      const message = String(error?.message || error);
+      state.contextMessages.push({ role: "assistant", content: `오류: ${message}` });
+      renderContextMessages();
+      handleJudgeError(error);
+    } finally {
+      setContextBusy(false);
+    }
+  }
+
   backendUrlInput.addEventListener("change", refreshStatus);
   modelSelect.addEventListener("change", () => {
     setTimeout(() => {
@@ -510,6 +578,7 @@
   });
   judgeButton.addEventListener("click", judgeCurrentPage);
   imageJudgeButton.addEventListener("click", judgeCurrentImages);
+  contextQuestionForm.addEventListener("submit", askContextQuestion);
   startProxyButton.addEventListener("click", ensureOpenAIOAuthProxy);
   refreshStatus();
 })();

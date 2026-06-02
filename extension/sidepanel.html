@@ -48,6 +48,14 @@
       <section id="errorPanel" class="error" hidden></section>
     </main>
 
+    <section id="contextChatPanel" class="context-chat">
+      <div id="contextChatMessages" class="context-chat-messages" aria-live="polite"></div>
+      <form id="contextQuestionForm" class="context-question-form">
+        <textarea id="contextQuestionInput" rows="2" placeholder="현재 맥락에서 질문"></textarea>
+        <button id="contextAskButton" type="submit">질문</button>
+      </form>
+    </section>
+
     <script src="sidepanel.js"></script>
   </body>
 </html>

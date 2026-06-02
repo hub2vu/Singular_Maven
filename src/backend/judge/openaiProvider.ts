@@ -20,6 +20,15 @@ export interface LlmProviderInput {
 
 export type LlmProvider = (input: LlmProviderInput) => Promise<JudgmentCard | string>;
 
+export interface TextProviderInput {
+  system: string;
+  user: string;
+  model: string;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
+}
+
+export type TextProvider = (input: TextProviderInput) => Promise<string>;
+
 function extractOutputText(response: any): string {
   const messageContent = response.choices?.[0]?.message?.content;
   if (typeof messageContent === "string") return messageContent;
@@ -86,6 +95,40 @@ export function makeOpenAIJudgeProvider(options: OpenAIJudgeProviderOptions = {}
 
     const json = await response.json();
     return validateJudgeCard(extractOutputText(json));
+  };
+}
+
+export function makeOpenAITextProvider(options: OpenAIJudgeProviderOptions = {}): TextProvider {
+  return async ({ system, user, model, history = [] }) => {
+    const status = await ensureOpenAIOAuthProxy({
+      baseUrl: options.baseUrl,
+      port: options.port,
+      autoStart: options.autoStartProxy
+    });
+
+    const messages = [
+      { role: "system", content: system },
+      ...history.map((item) => ({ role: item.role, content: item.content })),
+      { role: "user", content: user }
+    ];
+    const response = await fetch(`${status.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: options.model ?? model,
+        messages,
+        temperature: 0.2
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`openai-oauth request failed ${response.status}: ${errorText.slice(0, 500)}`);
+    }
+
+    return extractOutputText(await response.json());
   };
 }
 
