@@ -81,7 +81,12 @@ function titleKey(value) {
     .trim();
 }
 
+function isStandaloneCommentCountTitle(value) {
+  return /^\[[0-9]+\]$/u.test(normalizeTitle(value));
+}
+
 function titleMatches(postTitle, requestedTitle) {
+  if (isStandaloneCommentCountTitle(postTitle)) return false;
   const post = normalizeTitle(postTitle);
   const needle = normalizeTitle(requestedTitle);
   const postKey = titleKey(postTitle);
@@ -99,7 +104,7 @@ function titleMatches(postTitle, requestedTitle) {
 
 function findVisibleListPost(posts, title) {
   if (!normalizeTitle(title)) return undefined;
-  const candidates = (posts || []).filter((post) => post?.title && post?.url);
+  const candidates = (posts || []).filter((post) => post?.title && post?.url && !isStandaloneCommentCountTitle(post.title));
   return candidates.find((post) => titleMatches(post.title, title));
 }
 
@@ -136,6 +141,29 @@ function waitForTabComplete(tab) {
   });
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function collectObservationWithImageRetry(tab) {
+  let observed = await sendMessageWithContentScript(tab, { type: "MAVEN_COLLECT_OBSERVATION" });
+  const imageCount = () => Array.isArray(observed?.observation?.images) ? observed.observation.images.length : 0;
+  if (!observed?.ok || imageCount() > 0) {
+    return observed;
+  }
+  for (const waitMs of [300, 900]) {
+    await delay(waitMs);
+    const retry = await sendMessageWithContentScript(tab, { type: "MAVEN_COLLECT_OBSERVATION" });
+    if (retry?.ok) {
+      observed = retry;
+    }
+    if (imageCount() > 0) {
+      break;
+    }
+  }
+  return observed;
+}
+
 async function observeUrlInInactiveTab(url) {
   const tab = await chrome.tabs.create({ url, active: false });
   if (!tab?.id) {
@@ -144,7 +172,7 @@ async function observeUrlInInactiveTab(url) {
   const targetTab = { ...tab, url: tab.url || url };
   try {
     await waitForTabComplete(targetTab);
-    const observed = await sendMessageWithContentScript(targetTab, { type: "MAVEN_COLLECT_OBSERVATION" });
+    const observed = await collectObservationWithImageRetry(targetTab);
     if (!observed?.ok) {
       throw new Error(observed?.reason || "inactive tab observation failed");
     }

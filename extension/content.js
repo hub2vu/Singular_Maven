@@ -403,6 +403,7 @@
     const title = textOf(link) || normalize(link.getAttribute("title")) || normalize(link.getAttribute("aria-label"));
     const url = absoluteUrl(link.getAttribute("href") || "");
     if (!title || !url || !/\/board\/view\//iu.test(url)) return undefined;
+    if (/^\[[0-9]+\]$/u.test(normalize(title))) return undefined;
 
     const row = link.closest("tr, li, .ub-content") || link.closest(".gall_tit") || link.parentElement;
     const rowElement = row instanceof HTMLElement ? row : undefined;
