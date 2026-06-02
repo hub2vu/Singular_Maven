@@ -29,6 +29,7 @@
   const backendUrlInput = document.querySelector("#backendUrl");
   const modelSelect = document.querySelector("#modelSelect");
   const judgeButton = document.querySelector("#judgeButton");
+  const commentJudgeButton = document.querySelector("#commentJudgeButton");
   const imageJudgeButton = document.querySelector("#imageJudgeButton");
   const startProxyButton = document.querySelector("#startProxyButton");
   const authStatus = document.querySelector("#authStatus");
@@ -416,14 +417,17 @@
 
   function setJudgmentBusy(activeButton, busyText) {
     judgeButton.disabled = true;
+    commentJudgeButton.disabled = true;
     imageJudgeButton.disabled = true;
     activeButton.textContent = busyText;
   }
 
   function clearJudgmentBusy() {
     judgeButton.disabled = false;
+    commentJudgeButton.disabled = false;
     imageJudgeButton.disabled = false;
     judgeButton.textContent = "이 페이지 LLM 판단";
+    commentJudgeButton.textContent = "댓글 LLM 판단";
     imageJudgeButton.textContent = "이미지 LLM 판단";
   }
 
@@ -437,6 +441,7 @@
     listImageBriefButton.disabled = isBusy;
     listImageTitleInput.disabled = isBusy;
     judgeButton.disabled = isBusy;
+    commentJudgeButton.disabled = isBusy;
     imageJudgeButton.disabled = isBusy;
     listImageBriefButton.textContent = isBusy ? "브리핑 중" : "브리핑";
   }
@@ -478,6 +483,50 @@
     renderActions();
   }
 
+  function pageOnlyObservation(observation) {
+    return {
+      ...observation,
+      comments: [],
+      htmlExcerpt: "",
+      viewportText: observation.bodyText || "",
+      clickableLabels: (observation.clickableLabels || []).filter((label) => !/댓글|comment/i.test(label)),
+      metadata: {
+        ...(observation.metadata || {}),
+        mavenJudgmentScope: "page-without-comments"
+      }
+    };
+  }
+
+  function commentTextForPrompt(comments = []) {
+    return comments.map((comment, index) => {
+      const author = comment.authorIdentity?.uid || comment.author || comment.authorIdentity?.name || "-";
+      const ip = comment.authorIdentity?.ip ? ` ip:${comment.authorIdentity.ip}` : "";
+      const date = comment.date ? ` ${comment.date}` : "";
+      return `[${index + 1}] ${author}${ip}${date}: ${comment.text}`;
+    }).join("\n");
+  }
+
+  function commentOnlyObservation(observation) {
+    const comments = Array.isArray(observation.comments) ? observation.comments : [];
+    const bodyText = commentTextForPrompt(comments);
+    return {
+      ...observation,
+      title: `${observation.title} - 댓글 판단`,
+      bodyText,
+      htmlExcerpt: "",
+      images: [],
+      links: [],
+      selectedText: "",
+      viewportText: bodyText,
+      clickableLabels: [],
+      comments,
+      metadata: {
+        ...(observation.metadata || {}),
+        mavenJudgmentScope: "comments-only"
+      }
+    };
+  }
+
   function renderListImageBriefResult(result, observation, listPost) {
     const title = observation?.title || listPost?.title || "";
     const postNo = observation?.postNo || listPost?.postNo || "-";
@@ -510,12 +559,39 @@
     setJudgmentBusy(judgeButton, "판단 중");
     try {
       await observeCurrentPage();
+      const pageObservation = pageOnlyObservation(state.observation);
 
       const result = await fetchJson("/api/judge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          observation: state.observation,
+          observation: pageObservation,
+          model: selectedModel()
+        })
+      });
+      renderJudgmentResult(result);
+      await refreshStatus();
+    } catch (error) {
+      handleJudgeError(error);
+    } finally {
+      clearJudgmentBusy();
+    }
+  }
+
+  async function judgeCurrentComments() {
+    setError("");
+    storeRuntimeSettings();
+    setJudgmentBusy(commentJudgeButton, "댓글 판단 중");
+    try {
+      const observation = await observeCurrentPage();
+      if (!Array.isArray(observation.comments) || observation.comments.length === 0) {
+        throw new Error("이 페이지에서 판단할 댓글을 찾지 못했습니다.");
+      }
+      const result = await fetchJson("/api/judge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          observation: commentOnlyObservation(observation),
           model: selectedModel()
         })
       });
@@ -652,6 +728,7 @@
     authStatus.textContent = `selected model 쨌 ${selectedModel()}`;
   });
   judgeButton.addEventListener("click", judgeCurrentPage);
+  commentJudgeButton.addEventListener("click", judgeCurrentComments);
   imageJudgeButton.addEventListener("click", judgeCurrentImages);
   listImageBriefToggle.addEventListener("click", () => {
     setListImageBriefCollapsed(!listImageBriefBody.hidden);
