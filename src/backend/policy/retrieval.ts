@@ -1,9 +1,10 @@
 import type { ModerationObservation, PolicyCorpus, PolicyDocument, PolicyEvidence, PolicyRule, PolicyRuleKind } from "../../shared/types.js";
+import { detectModGoro } from "./modGoro.js";
 
 const ISSUE_KEYWORDS: Record<string, string[]> = {
   "이왜특/갤무관": ["이왜특", "갤무관", "무관", "특이점"],
   "정떡": ["정떡", "정치", "대통령", "국힘", "민주당", "좌파", "우파"],
-  "완장고로시": ["완장고로시", "운영진 공격", "완장 욕", "파딱 욕", "주딱 욕", "친목완장욕", "관리자 공격"],
+  "완장고로시": ["완장고로시", "완장 고로시", "파딱고로시", "파딱 고로시", "주딱고로시", "주딱 고로시", "운영 방해", "운영진을 흔들", "운영 흔들기", "완장 수 선동", "친목완장욕"],
   "도배기/역류기": ["도배기", "역류기", "도배", "방어", "댓글방어", "게시물방어"],
   "이미지 리스크": ["혐짤", "야짤", "이미지글 삭제", "gif 테러", "혐오 이미지", "짤테러", "이미지 리스크"],
   "수익/홍보/강의팔이": ["홍보", "수익", "강의", "유료"],
@@ -60,9 +61,12 @@ function observationText(observation: ModerationObservation): string {
 
 function inferQueryTags(text: string): string[] {
   const haystack = text.toLowerCase();
-  return Object.entries(ISSUE_KEYWORDS)
+  const tags = Object.entries(ISSUE_KEYWORDS)
+    .filter(([tag]) => tag !== "완장고로시")
     .filter(([, keywords]) => keywords.some((keyword) => haystack.includes(keyword.toLowerCase())))
     .map(([tag]) => tag);
+  if (detectModGoro(text).signal) tags.push("완장고로시");
+  return [...new Set(tags)];
 }
 
 function categoryForTags(tags: string[]): string {
@@ -120,6 +124,10 @@ function rulesForCorpus(corpus: PolicyCorpus): PolicyRule[] {
 
 function scoreRule(rule: PolicyRule, queryTokens: Set<string>, queryTags: string[], rawQuery: string): number {
   const rawLower = rawQuery.toLowerCase();
+  const modGoro = detectModGoro(rawQuery);
+  if (rule.category === "완장고로시" && (modGoro.safeOnly || !modGoro.signal)) {
+    return 0;
+  }
   const ruleText = [
     rule.source_title,
     rule.category,
@@ -151,6 +159,13 @@ function scoreRule(rule: PolicyRule, queryTokens: Set<string>, queryTags: string
 
   for (const keyword of rule.keywords) {
     if (keyword.length > 1 && rawLower.includes(keyword.toLowerCase())) score += 1.5;
+  }
+
+  if (rule.category === "완장고로시" && modGoro.signal) {
+    const guardrail = rule.kind === "exception" || rule.tags.includes("오탐방지");
+    score += modGoro.strongSignal
+      ? (rule.source_type === "seed" ? 10 : 4)
+      : (guardrail ? 6 : 3);
   }
 
   if (/@특갤봇|@특갤에이전트/u.test(rawQuery) && rule.category === "특갤봇 명령 후보") score += 9;
