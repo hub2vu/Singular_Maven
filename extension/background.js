@@ -74,13 +74,33 @@ function normalizeTitle(value) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+function titleKey(value) {
+  return normalizeTitle(value)
+    .replace(/\[[0-9]+\]/gu, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .trim();
+}
+
+function titleMatches(postTitle, requestedTitle) {
+  const post = normalizeTitle(postTitle);
+  const needle = normalizeTitle(requestedTitle);
+  const postKey = titleKey(postTitle);
+  const needleKey = titleKey(requestedTitle);
+  if (!post || !needle) return false;
+  return post === needle ||
+    post.includes(needle) ||
+    needle.includes(post) ||
+    Boolean(postKey && needleKey && (
+      postKey === needleKey ||
+      postKey.includes(needleKey) ||
+      needleKey.includes(postKey)
+    ));
+}
+
 function findVisibleListPost(posts, title) {
-  const needle = normalizeTitle(title);
-  if (!needle) return undefined;
+  if (!normalizeTitle(title)) return undefined;
   const candidates = (posts || []).filter((post) => post?.title && post?.url);
-  return candidates.find((post) => normalizeTitle(post.title) === needle) ||
-    candidates.find((post) => normalizeTitle(post.title).includes(needle)) ||
-    candidates.find((post) => needle.includes(normalizeTitle(post.title)));
+  return candidates.find((post) => titleMatches(post.title, title));
 }
 
 async function collectVisibleListPostsFromActiveTab() {
@@ -140,16 +160,17 @@ async function observeListPostByTitle(title) {
   const listResult = await collectVisibleListPostsFromActiveTab();
   const listPost = findVisibleListPost(listResult.posts, title);
   if (!listPost) {
+    const candidates = (listResult.posts || []).slice(0, 20).map((post) => post.title);
     return {
       ok: false,
-      reason: `No visible list post matched title: ${title || ""}`,
-      candidates: (listResult.posts || []).slice(0, 20).map((post) => post.title)
+      reason: `현재 목록 HTML에서 제목을 찾지 못했습니다: ${title || ""}${candidates.length ? ` / 후보: ${candidates.join(" | ")}` : ""}`,
+      candidates
     };
   }
   if (!listPost.hasImage) {
     return {
       ok: false,
-      reason: `Matched list post has no attached-image marker: ${listPost.title}`,
+      reason: `HTML에서는 제목을 찾았지만 사진 아이콘을 확인하지 못했습니다: ${listPost.title}`,
       listPost
     };
   }

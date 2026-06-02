@@ -395,32 +395,64 @@
     });
   }
 
+  function listPostFromLink(link, options = {}) {
+    if (!(link instanceof HTMLElement)) return undefined;
+    const title = textOf(link) || normalize(link.getAttribute("title")) || normalize(link.getAttribute("aria-label"));
+    const url = absoluteUrl(link.getAttribute("href") || "");
+    if (!title || !url || !/\/board\/view\//iu.test(url)) return undefined;
+
+    const row = link.closest("tr, li, .ub-content") || link.closest(".gall_tit") || link.parentElement;
+    const rowElement = row instanceof HTMLElement ? row : undefined;
+    const visible = rowElement ? isVisible(rowElement) && inViewport(rowElement) : isVisible(link) && inViewport(link);
+    if (options.visibleOnly && !visible) return undefined;
+
+    const titleCell = link.closest(".gall_tit, .ub-word") || link.parentElement || link;
+    const subject = rowElement ? textOf(first(".gall_subject", rowElement)) || textOf(rowElement.querySelector("td")) : "";
+    const writer = rowElement
+      ? getAuthorFromElement(first(".gall_writer, .ub-writer, [data-uid], [data-user-id], [data-ip]", rowElement) || rowElement)
+      : undefined;
+
+    return {
+      title,
+      url,
+      postNo: urlPostNo(url),
+      head: subject || undefined,
+      author: writer?.name ? writer : undefined,
+      hasImage: hasAttachedImageMarker(rowElement || link, titleCell),
+      visible,
+      source: visible ? "visible-row" : "html-link"
+    };
+  }
+
+  function uniqueListPosts(posts) {
+    const seen = new Set();
+    return posts.filter((post) => {
+      if (!post?.url) return false;
+      const key = post.url;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
   function collectVisibleListPosts() {
     const rows = all(".gall_list tbody tr.ub-content, .gall_list tbody tr, tr.ub-content");
-    const posts = rows.map((row) => {
+    const rowPosts = rows.map((row) => {
       if (!(row instanceof HTMLElement) || !isVisible(row) || !inViewport(row)) return undefined;
       const titleCell = first(".gall_tit, .ub-word, td:nth-child(2)", row) || row;
       const link = first("a[href*='/board/view/'], a[href*='board/view']", titleCell);
-      if (!(link instanceof HTMLElement)) return undefined;
-      const title = textOf(link);
-      const url = absoluteUrl(link.getAttribute("href") || "");
-      if (!title || !url) return undefined;
-      const subject = textOf(first(".gall_subject", row)) || textOf(row.querySelector("td"));
-      const writer = getAuthorFromElement(first(".gall_writer, .ub-writer, [data-uid], [data-user-id], [data-ip]", row) || row);
-      return {
-        title,
-        url,
-        postNo: urlPostNo(url),
-        head: subject || undefined,
-        author: writer?.name ? writer : undefined,
-        hasImage: hasAttachedImageMarker(row, titleCell)
-      };
+      return listPostFromLink(link, { visibleOnly: true });
     }).filter(Boolean);
+    const htmlPosts = all(".gall_list a[href*='/board/view/'], a[href*='/board/view/']")
+      .map((link) => listPostFromLink(link))
+      .filter(Boolean);
+    const posts = uniqueListPosts([...rowPosts, ...htmlPosts]);
 
     return {
       ok: true,
       url: location.href,
       galleryId: getUrlParam("id"),
+      visibleCount: posts.filter((post) => post.visible).length,
       posts
     };
   }
