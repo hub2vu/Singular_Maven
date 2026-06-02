@@ -162,10 +162,9 @@ function scoreRule(rule: PolicyRule, queryTokens: Set<string>, queryTags: string
   }
 
   if (rule.category === "완장고로시" && modGoro.signal) {
-    const guardrail = rule.kind === "exception" || rule.tags.includes("오탐방지");
     score += modGoro.strongSignal
       ? (rule.source_type === "seed" ? 10 : 4)
-      : (guardrail ? 6 : 3);
+      : 3;
   }
 
   if (/@특갤봇|@특갤에이전트/u.test(rawQuery) && rule.category === "특갤봇 명령 후보") score += 9;

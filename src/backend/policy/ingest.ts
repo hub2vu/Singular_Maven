@@ -100,28 +100,6 @@ const SEED_DOCS: Array<Omit<PolicyDocument, "id" | "source_type">> = [
     tags: ["완장고로시"]
   },
   {
-    rule_id: "seed-mod-complaint-channel-vs-goro",
-    source_post_no: "1043170",
-    title: "완장고로시: 민원 창구와 운영 흔들기 구분",
-    body: "공지 댓글, 신문고, 방명록의 정중한 민원은 대응한다. 반대로 유동/깡계가 뜬금없이 게시글로 완장, 운영, 차단을 싸잡아 흔드는 경우는 삭제·차단 후보로 본다.",
-    comments: ["검색 키워드: 완장고로시 운영 흔들기 차단이 어쩌니 유동 깡계 신문고 방명록"],
-    image_urls: [],
-    links: [],
-    excerpt: "정중한 민원은 대응하되, 유동/깡계의 돌발 운영 흔들기는 병먹금·삭제·차단 후보.",
-    tags: ["완장고로시", "오탐방지", "요주의 계정/IP/VPN"]
-  },
-  {
-    rule_id: "seed-mod-longtime-user-leniency",
-    source_post_no: "925024",
-    title: "오래 활동한 고닉/유동은 기계적으로 잡지 않음",
-    body: "오래 활동한 고닉이나 유동 IP는 적당히 커트라인을 봐주고 댓글 경고 등으로 처리한다. 깡계정이나 갤 방향성과 반대되는 글은 더 강하게 처리한다. 완장 활동은 무색무취하게 한다.",
-    comments: ["검색 키워드: 오래 활동한 고닉 기계적 차단 금지 무색무취 댓글 경고 깡계"],
-    image_urls: [],
-    links: [],
-    excerpt: "고닉/장기 유저는 우선 유도리 있게, 깡계·분탕성은 강하게. 완장은 무색무취.",
-    tags: ["완장고로시", "오탐방지", "운영 원칙"]
-  },
-  {
     rule_id: "seed-mod-behavior-during-heated-topics",
     source_post_no: "1226361",
     title: "완장 행동 원칙: 과열 시 공지 후 제한",
@@ -131,17 +109,6 @@ const SEED_DOCS: Array<Omit<PolicyDocument, "id" | "source_type">> = [
     links: [],
     excerpt: "완장은 입이 무겁게. 과열 주제는 공지+유예 후 제한, 분탕만 차단.",
     tags: ["완장고로시", "운영 원칙"]
-  },
-  {
-    rule_id: "seed-mod-factual-criticism-allowed",
-    source_post_no: "1133372",
-    title: "사실 기반 완장 비판은 허용하되 근거 없는 비난은 경계",
-    body: "사실에 기반한 완장 비판은 삭제·차단 사유가 아니다. 다만 개인 불만성 워딩, 근거 없는 비난, 노예취급성 표현이 반복되면 별도 규정과 조치가 필요할 수 있다.",
-    comments: ["검색 키워드: 사실 기반 완장 비판 근거 없는 비난 관리 피로 오탐 정당한 비판"],
-    image_urls: [],
-    links: [],
-    excerpt: "사실 기반 비판은 허용. 근거 없는 비난과 반복 불만은 관찰·누적.",
-    tags: ["완장고로시", "오탐방지", "운영비판 허용"]
   },
   {
     rule_id: "seed-mod-lead-intervention-line",
@@ -166,17 +133,6 @@ const SEED_DOCS: Array<Omit<PolicyDocument, "id" | "source_type">> = [
     tags: ["완장고로시", "반복여론몰이", "친목/네임드화"]
   },
   {
-    rule_id: "seed-mod-criticism-vs-destabilization",
-    source_post_no: "1201345",
-    title: "완장비판 허용과 운영진 흔들기 구분",
-    body: "완장비판은 공지상 허용되지만, 사실 여부와 별개로 운영진을 흔들 정도의 언행은 바로잡을 필요가 있다. 항의 시에는 단순 비판인지 운영 방해인지 분리해 설명한다.",
-    comments: ["검색 키워드: 완장비판 허용 운영진을 흔들 운영 방해 항의 대응"],
-    image_urls: [],
-    links: [],
-    excerpt: "완장비판은 허용. 운영진을 흔들 정도의 언행은 운영 방해로 별도 판단.",
-    tags: ["완장고로시", "오탐방지", "운영 방해"]
-  },
-  {
     rule_id: "seed-mod-repeated-evidence-case",
     source_post_no: "1201546",
     title: "반복 프레임 증거 정리: 단건 비판과 누적 운영 방해 구분",
@@ -191,12 +147,12 @@ const SEED_DOCS: Array<Omit<PolicyDocument, "id" | "source_type">> = [
     rule_id: "seed-mod-escalation-levels",
     source_post_no: "1194950",
     title: "완장고로시 제재는 단계적으로: 경고·단기·31일",
-    body: "갱차가 과할 수 있는 경우 경고성 1일, 7일, 31일 등 단계 처리를 검토한다. 차단 사유는 운영 방해 경고처럼 항고 대응 가능한 문구로 남긴다.",
-    comments: ["검색 키워드: 1일 차단 7일 차단 31일 운영 방해 경고 갱차는 과함"],
+    body: "완장고로시가 반복·파생글·여론몰이로 확인되면 경고성 1일, 7일, 31일 등 단계 처리를 검토한다. 차단 사유는 운영 방해 경고처럼 항고 대응 가능한 문구로 남긴다.",
+    comments: ["검색 키워드: 1일 차단 7일 차단 31일 운영 방해 경고 반복 여론몰이"],
     image_urls: [],
     links: [],
-    excerpt: "바로 갱차보다 경고성 단기 차단 후 반복 시 강화.",
-    tags: ["완장고로시", "제재수위", "오탐방지"]
+    excerpt: "반복·파생글·여론몰이 확인 시 경고성 단기 차단 후 반복 시 강화.",
+    tags: ["완장고로시", "제재수위"]
   },
   {
     rule_id: "seed-mod-identical-frame-ip-shift",

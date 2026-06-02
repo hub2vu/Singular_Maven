@@ -133,7 +133,6 @@ export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePromp
     "JUDGMENT REQUIREMENTS:",
     "- Compare current-page quotes against policy evidence source_post_no values side by side.",
     "- 완장고로시는 '완장/파딱/주딱/매니저' 단어 단독이 아니라 운영진 앵커 + 공격/해임/친목/권력남용 프레임 + 반복/여론몰이/저신뢰 정황을 함께 본다.",
-    "- 단건 문의, 사실 기반 운영 비판, 지정 창구 민원, 운영자 사과문, 내부 운영 논의, AI파딱/완장 농담/응원/가이드 글은 완장고로시로 분류하지 않는다.",
     "- 닉언콘/친목 조항은 비활성화되었습니다. 단순 이모티콘, 콘, 스티커, 닉네임 언급만으로 삭제 후보나 차단 후보를 만들지 마세요.",
     ...(uploadedImageMode ? [
       "- Judge only the author-uploaded images listed in CURRENT PAGE OBSERVATION.images and attached as image_url inputs.",
