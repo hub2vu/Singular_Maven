@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "DCInside Maven Copilot",
+  "version": "0.1.0",
+  "description": "Read-only LLM-first moderation copilot for DCInside gallery managers.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw9Uw0dye+3ukdJBsFeyJRGeUgrG8jBUE2V18dD65rCongcSTabTSMSiBI/u/e+OmwI58SKFHI9u+/IRvIGAtwEXnnYbRW710Ba/lte7N62y8cr/S0zcCw5ei3VxcLEowH3dac7bGVhPb7XaPnPFjxnXmnUjomzpQr1PGHsLZXvow6QExsTAoCDPgQJTbAnVz6c7yWdheC+na+Gixh5GGBAqeTcim24ZFixkwXOhZ0apwmjth5D6innHi+W3Q+bcjWtSe6x5vevdaYRZyutM+2on6efnI+dWZ7WqR5BHmdtAdmKN/0WIvovEzMmAAsNTtXgcbwlEWaOzKT4JL0ykEnwIDAQAB",
+  "permissions": ["activeTab", "tabs", "sidePanel", "scripting", "storage", "downloads", "nativeMessaging"],
+  "host_permissions": [
+    "<all_urls>",
+    "http://127.0.0.1:8787/*",
+    "http://localhost:8787/*",
+    "https://gall.dcinside.com/*",
+    "https://*.dcinside.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "DCInside Maven Copilot"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://gall.dcinside.com/*", "https://*.dcinside.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

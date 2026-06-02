@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCInside Maven Copilot</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>DCInside Maven</h1>
+        <p id="authStatus">checking backend</p>
+      </div>
+      <button id="judgeButton" class="primary">이 페이지 LLM 판단</button>
+    </header>
+
+    <section class="backend-row">
+      <label for="backendUrl">Backend</label>
+      <input id="backendUrl" type="url" value="http://127.0.0.1:8787" />
+    </section>
+    <section class="backend-row">
+      <label for="modelSelect">Model</label>
+      <select id="modelSelect" aria-label="Judge model">
+        <option value="gpt-5.5">GPT-5.5</option>
+        <option value="gpt-5.4">GPT-5.4</option>
+        <option value="gpt-5.4-mini">GPT-5.4-Mini</option>
+        <option value="gpt-5.3-codex">GPT-5.3-Codex</option>
+        <option value="gpt-5.3-codex-spark">GPT-5.3-Codex-Spark</option>
+        <option value="gpt-5.2">GPT-5.2</option>
+      </select>
+    </section>
+
+    <main>
+      <section id="oauthPanel" class="panel auth-panel" hidden>
+        <h2 class="section-title">OpenAI OAuth</h2>
+        <p id="oauthHelp">Uses local openai-oauth proxy. If login is needed, run npx @openai/codex login once.</p>
+        <button id="startProxyButton" type="button">Start OAuth proxy</button>
+        <p id="oauthProxyStatus"></p>
+      </section>
+      <section id="summaryPanel" class="panel"></section>
+      <section id="memberPanel" class="panel"></section>
+      <section id="cardPanel" class="panel"></section>
+      <section id="actionsPanel" class="panel actions"></section>
+      <section id="errorPanel" class="error" hidden></section>
+    </main>
+
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

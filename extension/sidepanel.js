@@ -1,0 +1,443 @@
+(function () {
+  "use strict";
+
+  const state = {
+    observation: null,
+    screenshotDataUrl: null,
+    card: null,
+    auditId: null
+  };
+
+  const DEFAULT_JUDGE_MODELS = [
+    "gpt-5.5",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.3-codex",
+    "gpt-5.3-codex-spark",
+    "gpt-5.2"
+  ];
+  const MODEL_LABELS = {
+    "gpt-5.5": "GPT-5.5",
+    "gpt-5.4": "GPT-5.4",
+    "gpt-5.4-mini": "GPT-5.4-Mini",
+    "gpt-5.3-codex": "GPT-5.3-Codex",
+    "gpt-5.3-codex-spark": "GPT-5.3-Codex-Spark",
+    "gpt-5.2": "GPT-5.2"
+  };
+
+  const backendUrlInput = document.querySelector("#backendUrl");
+  const modelSelect = document.querySelector("#modelSelect");
+  const judgeButton = document.querySelector("#judgeButton");
+  const startProxyButton = document.querySelector("#startProxyButton");
+  const authStatus = document.querySelector("#authStatus");
+  const oauthPanel = document.querySelector("#oauthPanel");
+  const oauthProxyStatus = document.querySelector("#oauthProxyStatus");
+  const summaryPanel = document.querySelector("#summaryPanel");
+  const memberPanel = document.querySelector("#memberPanel");
+  const cardPanel = document.querySelector("#cardPanel");
+  const actionsPanel = document.querySelector("#actionsPanel");
+  const errorPanel = document.querySelector("#errorPanel");
+
+  backendUrlInput.value = localStorage.getItem("mavenBackendUrl") || backendUrlInput.value;
+
+  function normalizeModels(models) {
+    if (!Array.isArray(models)) return DEFAULT_JUDGE_MODELS;
+    const valid = models.filter((model) => DEFAULT_JUDGE_MODELS.includes(model));
+    return valid.length ? valid : DEFAULT_JUDGE_MODELS;
+  }
+
+  function selectedModel() {
+    return modelSelect.value || DEFAULT_JUDGE_MODELS[0];
+  }
+
+  function populateModelSelect(models, preferredModel) {
+    const allowed = normalizeModels(models);
+    const selected = allowed.includes(preferredModel) ? preferredModel : allowed[0];
+    modelSelect.innerHTML = "";
+    for (const model of allowed) {
+      const option = document.createElement("option");
+      option.value = model;
+      option.textContent = MODEL_LABELS[model] || model;
+      modelSelect.appendChild(option);
+    }
+    modelSelect.value = selected;
+  }
+
+  populateModelSelect(DEFAULT_JUDGE_MODELS, localStorage.getItem("mavenJudgeModel") || DEFAULT_JUDGE_MODELS[0]);
+
+  function backendUrl(path) {
+    return `${backendUrlInput.value.replace(/\/+$/, "")}${path}`;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "\"": "&quot;",
+      "'": "&#39;"
+    })[char]);
+  }
+
+  function setError(message) {
+    errorPanel.hidden = !message;
+    errorPanel.textContent = message || "";
+  }
+
+  function showOAuthPanel(status) {
+    const needsAttention = !status?.configured || !status?.proxyReady;
+    oauthPanel.hidden = !needsAttention;
+    const base = status?.baseUrl || `http://127.0.0.1:${status?.oauthPort || 10531}`;
+    const proxyCommand = status?.proxyCommand || `npx -y openai-oauth --port ${status?.oauthPort || 10531}`;
+    const loginCommand = status?.loginCommand || "npx @openai/codex login";
+    oauthProxyStatus.textContent = `proxy: ${base} | autoStart: ${status?.autoStart === false ? "off" : "on"} | manual login if needed: ${loginCommand} | proxy command: ${proxyCommand}`;
+  }
+
+  function backendFetchError(error) {
+    const message = String(error?.message || error);
+    if (/failed to fetch|load failed|networkerror|fetch/i.test(message)) {
+      return `Backend connection failed: ${backendUrlInput.value} is not reachable. The extension will try native auto-start; if that fails, run npm run install:native-host once from C:\\Users\\hub2v\\Desktop\\Sing2.`;
+    }
+    return message;
+  }
+
+  function isBackendNetworkError(error) {
+    return /Backend connection failed|failed to fetch|load failed|networkerror|fetch/i.test(String(error?.message || error));
+  }
+
+  async function sendMessage(message) {
+    if (window.__DC_MAVEN_TEST__?.sendMessage) {
+      return window.__DC_MAVEN_TEST__.sendMessage(message);
+    }
+    return chrome.runtime.sendMessage(message);
+  }
+
+  function staleBackendMessage() {
+    return `stale backend: ${backendUrlInput.value} is an older Maven backend. Stop the old process on this port, then restart it with npm run dev:backend or reload the extension native host.`;
+  }
+
+  async function ensureBackendCompatible() {
+    let capabilities;
+    try {
+      capabilities = await fetchJson("/api/capabilities");
+    } catch (error) {
+      const message = String(error?.message || error);
+      if (/404|not found|Cannot GET|Cannot POST/i.test(message)) {
+        throw new Error(staleBackendMessage());
+      }
+      throw error;
+    }
+
+    const features = Array.isArray(capabilities?.features) ? capabilities.features : [];
+    const required = ["members.observe", "openai-oauth-proxy", "judge.model-select"];
+    const missing = required.filter((feature) => !features.includes(feature));
+    if (missing.length) {
+      throw new Error(`${staleBackendMessage()} Missing features: ${missing.join(", ")}`);
+    }
+    return capabilities;
+  }
+
+  async function ensureBackendRunning() {
+    authStatus.textContent = "backend auto-starting";
+    const response = await sendMessage({ type: "MAVEN_ENSURE_BACKEND", backendUrl: backendUrlInput.value });
+    if (!response?.ok) {
+      throw new Error(`Backend auto-start failed: ${response?.reason || "native host did not respond"}. Run npm run install:native-host once.`);
+    }
+    authStatus.textContent = response.started ? "backend auto-started" : "backend running";
+    return response;
+  }
+
+  async function fetchJson(path, options, allowAutoStart = true) {
+    let response;
+    try {
+      response = await fetch(backendUrl(path), options);
+    } catch (error) {
+      const wrapped = new Error(backendFetchError(error));
+      if (!allowAutoStart || !isBackendNetworkError(wrapped)) {
+        throw wrapped;
+      }
+      await ensureBackendRunning();
+      return fetchJson(path, options, false);
+    }
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `Backend request failed: ${response.status}`);
+    }
+    return response.json();
+  }
+
+  async function refreshStatus() {
+    try {
+      const status = await fetchJson("/api/auth/openai/status");
+      const models = normalizeModels(status.allowedModels);
+      const storedModel = localStorage.getItem("mavenJudgeModel");
+      const preferredModel = storedModel && models.includes(storedModel) ? storedModel : status.model;
+      populateModelSelect(models, preferredModel);
+      authStatus.textContent = `${status.mode} · ${status.model}${status.proxyReady ? " · proxy ready" : " · login/proxy needed"}`;
+      authStatus.textContent = `${status.mode} 쨌 ${selectedModel()}${status.proxyReady ? " 쨌 proxy ready" : " 쨌 login/proxy needed"}`;
+      showOAuthPanel(status);
+      authStatus.textContent = `${status.mode} | ${selectedModel()}${status.proxyReady ? " | proxy ready" : " | login/proxy needed"}`;
+    } catch {
+      authStatus.textContent = "backend connection needed";
+      populateModelSelect(DEFAULT_JUDGE_MODELS, localStorage.getItem("mavenJudgeModel") || selectedModel());
+      showOAuthPanel({ configured: false, proxyReady: false, autoStart: true, oauthPort: 10531 });
+    }
+  }
+
+  async function ensureOpenAIOAuthProxy() {
+    setError("");
+    startProxyButton.disabled = true;
+    try {
+      const result = await sendMessage({ type: "MAVEN_ENSURE_OPENAI_OAUTH_PROXY" });
+      if (!result?.ok) {
+        throw new Error(result?.reason || "openai-oauth proxy could not be started");
+      }
+      authStatus.textContent = `${result.proxyReady ? "proxy ready" : "proxy starting"} | ${result.proxyCommand || "npx -y openai-oauth --port 10531"}`;
+      await refreshStatus();
+    } catch (error) {
+      setError(String(error?.message || error));
+    } finally {
+      startProxyButton.disabled = false;
+    }
+  }
+
+  function renderSummary(observation) {
+    summaryPanel.innerHTML = `
+      <h2 class="section-title">Current page summary</h2>
+      <div class="meta">
+        <div><strong>${escapeHtml(observation.title)}</strong></div>
+        <div>${escapeHtml(observation.galleryId || "-")} · ${escapeHtml(observation.postNo || "-")} · ${escapeHtml(observation.head || "-")}</div>
+        <div>${escapeHtml(observation.author?.name || "-")} · ${escapeHtml(observation.createdAtText || "-")}</div>
+        <div>body ${escapeHtml(String(observation.bodyText?.length || 0))} chars · comments ${escapeHtml(String(observation.comments?.length || 0))} · images ${escapeHtml(String(observation.images?.length || 0))}</div>
+      </div>
+    `;
+  }
+
+  function riskOptions(current) {
+    return ["low", "watch", "high"].map((level) => (
+      `<option value="${level}"${level === current ? " selected" : ""}>${level}</option>`
+    )).join("");
+  }
+
+  function renderMembers(profiles = []) {
+    if (!profiles.length) {
+      memberPanel.innerHTML = "";
+      return;
+    }
+    memberPanel.innerHTML = `
+      <h2 class="section-title">Local member risk</h2>
+      ${profiles.map((profile) => `
+        <div class="member-row">
+          <div class="member-main">
+            <strong>${escapeHtml((profile.aliases || [])[0] || profile.key)}</strong>
+            <div class="meta">${escapeHtml(profile.key)}</div>
+            <div class="meta">uid ${escapeHtml((profile.uids || []).join(", ") || "-")} | ip ${escapeHtml((profile.ips || []).join(", ") || "-")} | seen ${escapeHtml(profile.observationCount || 0)}</div>
+          </div>
+          <select data-member-risk-key="${escapeHtml(profile.key)}" aria-label="Member risk for ${escapeHtml(profile.key)}">
+            ${riskOptions(profile.riskLevel || "low")}
+          </select>
+        </div>
+      `).join("")}
+    `;
+    for (const select of memberPanel.querySelectorAll("[data-member-risk-key]")) {
+      select.addEventListener("change", () => updateMemberRisk(select.dataset.memberRiskKey, select.value));
+    }
+  }
+
+  async function refreshMembers(observation) {
+    const result = await fetchJson("/api/members/observe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ observation })
+    });
+    renderMembers(result.profiles || []);
+  }
+
+  async function updateMemberRisk(key, riskLevel) {
+    if (!key) return;
+    await fetchJson("/api/members/risk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, riskLevel })
+    });
+    authStatus.textContent = `member risk saved | ${riskLevel}`;
+  }
+
+  function renderRules(rules = []) {
+    return rules.map((rule) => `
+      <div class="rule">
+        <strong>${escapeHtml(rule.rule_id)}</strong>
+        <div>source_post_no: <strong>${escapeHtml(rule.source_post_no)}</strong> · relevance ${escapeHtml(rule.relevance)}</div>
+        <div class="quote">${escapeHtml(rule.excerpt)}</div>
+      </div>
+    `).join("");
+  }
+
+  function renderEvidence(card) {
+    const current = (card.current_page_evidence || []).map((item) => `
+      <div class="quote"><strong>${escapeHtml(item.location)}</strong><br />${escapeHtml(item.quote)}</div>
+    `).join("");
+    const policy = (card.policy_evidence || []).map((item) => `
+      <div class="quote"><strong>${escapeHtml(item.source_post_no)}</strong> · ${escapeHtml(item.rule_id)}<br />${escapeHtml(item.quote)}</div>
+    `).join("");
+    return `
+      <div class="evidence-grid">
+        <div class="evidence-box">
+          <h3 class="section-title">Current page evidence</h3>
+          ${current || "<p>-</p>"}
+        </div>
+        <div class="evidence-box">
+          <h3 class="section-title">Policy evidence</h3>
+          ${policy || "<p>-</p>"}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderCard(card) {
+    cardPanel.innerHTML = `
+      <h2 class="section-title">${escapeHtml(card.summary)}</h2>
+      <div class="chips">${(card.issue_types || []).map((type) => `<span class="chip">${escapeHtml(type)}</span>`).join("")}</div>
+      <p><strong>LLM reasoning</strong><br />${escapeHtml(card.llm_reasoning)}</p>
+      <p><strong>uncertainty</strong>: ${escapeHtml(card.uncertainty)}</p>
+      <p><strong>false_positive_risk</strong>: ${escapeHtml(card.false_positive_risk)}</p>
+      <p><strong>final_human_decision_required: true</strong></p>
+      ${renderEvidence(card)}
+      <h3 class="section-title">matched rules</h3>
+      ${renderRules(card.matched_rules)}
+      <h3 class="section-title">recommended actions</h3>
+      ${(card.recommended_actions || []).map((action) => `<div class="quote"><strong>${escapeHtml(action.type)}</strong> · ${escapeHtml(action.label)}<br />${escapeHtml(action.rationale)}</div>`).join("")}
+    `;
+  }
+
+  function reasonText() {
+    if (!state.card) return "";
+    return [
+      state.card.summary,
+      state.card.llm_reasoning,
+      "Current page evidence:",
+      ...(state.card.current_page_evidence || []).map((item) => `- ${item.location}: ${item.quote}`),
+      "Policy evidence:",
+      ...(state.card.policy_evidence || []).map((item) => `- ${item.source_post_no}/${item.rule_id}: ${item.quote}`),
+      "final_human_decision_required: true"
+    ].join("\n");
+  }
+
+  function noticeDraft() {
+    return `Moderation review candidate\n\n${reasonText()}\n\nFinal decision and browser click must be performed by the human.`;
+  }
+
+  async function copyText(text) {
+    await navigator.clipboard.writeText(text);
+  }
+
+  function managerUrl() {
+    const galleryId = state.observation?.galleryId || "thesingularity";
+    return `https://gall.dcinside.com/mgallery/management/?id=${encodeURIComponent(galleryId)}`;
+  }
+
+  function renderActions() {
+    actionsPanel.innerHTML = "";
+    const buttons = [
+      ["Copy post URL", () => copyText(state.observation?.url || "")],
+      ["Show comments", () => sendMessage({ type: "MAVEN_SAFE_ACTION", action: { kind: "scroll", selector: "#comments, .comment_box, .cmt_list", label: "show comments" } })],
+      ["Save evidence screenshot", () => sendMessage({ type: "MAVEN_SAVE_SCREENSHOT", screenshotDataUrl: state.screenshotDataUrl, filename: `dcinside-${state.observation?.postNo || "page"}-evidence.png` })],
+      ["Copy reason", () => copyText(reasonText())],
+      ["Copy notice draft", () => copyText(noticeDraft())],
+      ["Copy bot command", () => copyText((state.card?.special_bot_command_candidates || []).join("\n"))],
+      ["Open management tab", () => sendMessage({ type: "MAVEN_OPEN_TAB", url: managerUrl(), label: "open management tab" })],
+      ["Prefill reason", () => sendMessage({ type: "MAVEN_SAFE_ACTION", action: { kind: "prefill", selector: "textarea[name='reason'], textarea, input[type='text']", label: "reason input", value: reasonText() } })]
+    ];
+    const decisionButtons = [
+      ["Log hold", "hold"],
+      ["Log false positive", "false-positive"],
+      ["Log delete candidate", "delete-candidate"],
+      ["Log ban candidate", "ban-candidate"]
+    ];
+    for (const [label, handler] of buttons) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.addEventListener("click", () => Promise.resolve(handler()).catch((error) => setError(String(error?.message || error))));
+      actionsPanel.appendChild(button);
+    }
+    for (const [label, outcome] of decisionButtons) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.addEventListener("click", () => recordDecision(outcome).catch((error) => setError(String(error?.message || error))));
+      actionsPanel.appendChild(button);
+    }
+  }
+
+  async function recordDecision(outcome) {
+    if (!state.auditId) throw new Error("auditId missing");
+    await fetchJson("/api/audit/decision", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        auditId: state.auditId,
+        decision: {
+          outcome,
+          note: "sidepanel human final choice log only; no moderation action performed",
+          decidedAt: new Date().toISOString()
+        }
+      })
+    });
+    setError("");
+    authStatus.textContent = `human decision logged: ${outcome}`;
+  }
+
+  async function judgeCurrentPage() {
+    setError("");
+    localStorage.setItem("mavenBackendUrl", backendUrlInput.value);
+    localStorage.setItem("mavenJudgeModel", selectedModel());
+    judgeButton.disabled = true;
+    judgeButton.textContent = "판단 중";
+    try {
+      await fetchJson("/health");
+      await ensureBackendCompatible();
+      const observed = await sendMessage({ type: "MAVEN_OBSERVE_ACTIVE_TAB" });
+      if (!observed?.ok) throw new Error(observed?.reason || "active tab observation failed");
+      state.observation = observed.observation;
+      state.screenshotDataUrl = observed.screenshotDataUrl;
+      renderSummary(state.observation);
+      await refreshMembers(state.observation);
+
+      const result = await fetchJson("/api/judge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          observation: state.observation,
+          model: selectedModel(),
+          ...(state.screenshotDataUrl ? { screenshotDataUrl: state.screenshotDataUrl } : {})
+        })
+      });
+      state.card = result.card;
+      state.auditId = result.auditId;
+      renderCard(state.card);
+      renderActions();
+      await refreshStatus();
+    } catch (error) {
+      if (String(error?.message || error).includes("openai-oauth")) {
+        showOAuthPanel({ configured: false, proxyReady: false, autoStart: true, oauthPort: 10531 });
+      }
+      setError(String(error?.message || error));
+    } finally {
+      judgeButton.disabled = false;
+      judgeButton.textContent = "이 페이지 LLM 판단";
+    }
+  }
+
+  backendUrlInput.addEventListener("change", refreshStatus);
+  modelSelect.addEventListener("change", () => {
+    setTimeout(() => {
+      authStatus.textContent = `selected model | ${selectedModel()}`;
+    }, 0);
+    localStorage.setItem("mavenJudgeModel", selectedModel());
+    authStatus.textContent = `selected model 쨌 ${selectedModel()}`;
+  });
+  judgeButton.addEventListener("click", judgeCurrentPage);
+  startProxyButton.addEventListener("click", ensureOpenAIOAuthProxy);
+  refreshStatus();
+})();
