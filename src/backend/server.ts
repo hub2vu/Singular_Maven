@@ -102,9 +102,90 @@ const MAVEN_CAPABILITIES = {
 } as const;
 
 const AD_IMAGE_PATTERN = /(^|[/_.\-\s])(ad|ads|adn|adfit|advert|advertise|banner|sponsor|doubleclick|googlesyndication|criteo|taboola|outbrain|tracking|beacon|pixel|logo|icon)([/_.\-\s]|$)/iu;
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  avif: "image/avif"
+};
+
+interface LoadedImageInput {
+  image: ObservationImage;
+  input: string;
+}
+
+interface ImageLoadFailure {
+  src: string;
+  reason: string;
+}
 
 function isUsableImageUrl(src: string): boolean {
   return /^https?:\/\//iu.test(src) || /^data:image\//iu.test(src);
+}
+
+function isNonEmptyImageDataUrl(value?: string): boolean {
+  const match = String(value ?? "").match(/^data:image\/[a-z0-9.+-]+;base64,(.*)$/isu);
+  return Boolean(match && match[1].trim().length > 0);
+}
+
+function imageMimeFromSource(src: string, fallbackType?: string | null): string | undefined {
+  if (String(fallbackType || "").startsWith("image/")) return String(fallbackType);
+  try {
+    const url = new URL(src);
+    const filename = decodeURIComponent(url.searchParams.get("f_no") || url.pathname);
+    const extension = filename.match(/\.([a-z0-9]+)(?:$|[?#])/iu)?.[1]?.toLowerCase();
+    return extension ? IMAGE_MIME_BY_EXTENSION[extension] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function downloadImageAsDataUrl(image: ObservationImage, pageUrl?: string): Promise<string> {
+  if (!/^https?:\/\//iu.test(image.src)) {
+    throw new Error("image source is not downloadable");
+  }
+  const response = await fetch(image.src, {
+    redirect: "follow",
+    headers: {
+      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      "User-Agent": "Mozilla/5.0",
+      ...(pageUrl ? { Referer: pageUrl } : {})
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`image download failed ${response.status}`);
+  }
+  const mimeType = imageMimeFromSource(image.src, response.headers.get("content-type"));
+  if (!mimeType) {
+    throw new Error(`image download returned non-image content-type: ${response.headers.get("content-type") || "unknown"}`);
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.length === 0) {
+    throw new Error("image download returned empty image bytes");
+  }
+  return `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
+}
+
+async function loadUploadedImageInputs(images: ObservationImage[], pageUrl?: string): Promise<{ loaded: LoadedImageInput[]; failures: ImageLoadFailure[] }> {
+  const loaded: LoadedImageInput[] = [];
+  const failures: ImageLoadFailure[] = [];
+  for (const image of images) {
+    try {
+      if (isNonEmptyImageDataUrl(image.dataUrl)) {
+        loaded.push({ image, input: image.dataUrl as string });
+      } else if (isNonEmptyImageDataUrl(image.src)) {
+        loaded.push({ image, input: image.src });
+      } else {
+        loaded.push({ image, input: await downloadImageAsDataUrl(image, pageUrl) });
+      }
+    } catch (error) {
+      failures.push({ src: image.src, reason: String(error instanceof Error ? error.message : error) });
+    }
+  }
+  return { loaded, failures };
 }
 
 function isLikelyAdOrChromeImage(image: ObservationImage): boolean {
@@ -248,24 +329,33 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       });
     }
 
+    const imageInputs = await loadUploadedImageInputs(images, observation.url);
+    if (!imageInputs.loaded.length) {
+      return reply.code(400).send({
+        error: "Uploaded post images could not be loaded",
+        message: "Uploaded post image URLs were found, but none could be loaded as non-empty images.",
+        failures: imageInputs.failures
+      });
+    }
+
+    const loadedImages = imageInputs.loaded.map((item) => item.image);
     const imageObservation: ModerationObservation = {
       ...observation,
-      images: images.map((image) => ({
+      images: loadedImages.map((image) => ({
         src: image.src,
         alt: image.alt,
         nearbyText: image.nearbyText
       }))
     };
-    const imageInputs = images.map((image) => image.dataUrl || image.src);
     const ingested = await ensureCorpus();
     const evidence = retrievePolicyEvidence(ingested, imageObservation, 12);
     const mockEnabled = options.mockLlm ?? process.env.MAVEN_ALLOW_MOCK_LLM === "1";
     const provider = mockEnabled ? makeMockJudgeProvider() : makeOpenAIJudgeProvider();
     const result = await judgeObservation({
       observation: imageObservation,
-      imageUrls: imageInputs,
-      imageSourceUrls: images.map((image) => image.src),
-      imageInputKinds: images.map((image) => image.dataUrl ? "data-url" : "url"),
+      imageUrls: imageInputs.loaded.map((item) => item.input),
+      imageSourceUrls: loadedImages.map((image) => image.src),
+      imageInputKinds: imageInputs.loaded.map(() => "data-url"),
       evidence,
       dataDir,
       model: resolveJudgeModel(body.model ?? process.env.OPENAI_MODEL),
@@ -276,8 +366,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     return {
       auditId: result.auditId,
       card: result.card,
-      imageCount: images.length,
-      attachedImageUrls: images.map((image) => image.src)
+      imageCount: loadedImages.length,
+      attachedImageUrls: loadedImages.map((image) => image.src),
+      imageLoadFailures: imageInputs.failures
     };
   });
 

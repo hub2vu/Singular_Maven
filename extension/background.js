@@ -117,6 +117,9 @@ async function imageToDataUrl(image, pageUrl) {
     throw new Error(`image fetch returned non-image content-type: ${blob.type || "unknown"}`);
   }
   const bytes = new Uint8Array(await blob.arrayBuffer());
+  if (bytes.length === 0) {
+    throw new Error("image fetch returned empty image bytes");
+  }
   return `data:${mimeType};base64,${bytesToBase64(bytes)}`;
 }
 

@@ -439,7 +439,8 @@
     const result = await sendMessage({ type: "MAVEN_INLINE_IMAGE_URLS", images, pageUrl: observation.url });
     if (!result?.ok || !Array.isArray(result.images) || result.images.length === 0) {
       const failures = (result?.failures || []).map((item) => `${item.src}: ${item.reason}`).join("; ");
-      throw new Error(`업로드 이미지를 LLM 입력용으로 불러오지 못했습니다.${failures ? ` ${failures}` : ""}`);
+      console.warn("Uploaded images will be loaded by the backend instead of the extension.", failures);
+      return observation;
     }
     return {
       ...observation,
