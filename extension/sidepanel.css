@@ -132,6 +132,27 @@ main {
   font-weight: 700;
 }
 
+.panel-heading {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-heading .section-title {
+  margin-bottom: 0;
+}
+
+.panel-toggle {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.collapsible-body[hidden] {
+  display: none;
+}
+
 .meta {
   display: grid;
   gap: 4px;
@@ -222,6 +243,11 @@ main {
   gap: 8px;
 }
 
+.list-image-brief .collapsible-body:not([hidden]) {
+  display: grid;
+  gap: 8px;
+}
+
 .list-image-brief-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 72px;
@@ -241,13 +267,8 @@ main {
 }
 
 .context-chat {
-  position: sticky;
-  bottom: 0;
   display: grid;
   gap: 8px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--line);
-  background: #ffffff;
 }
 
 .context-chat-messages {

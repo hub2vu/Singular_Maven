@@ -42,27 +42,31 @@
         <p id="oauthProxyStatus"></p>
       </section>
       <section id="listImageBriefPanel" class="panel list-image-brief">
-        <h2 class="section-title">목록 이미지 브리핑</h2>
-        <form id="listImageBriefForm" class="list-image-brief-form">
-          <input id="listImageTitleInput" type="text" placeholder="보이는 게시글 제목" autocomplete="off" />
-          <button id="listImageBriefButton" type="submit">브리핑</button>
-        </form>
-        <div id="listImageBriefResult" class="list-image-brief-result" aria-live="polite"></div>
+        <div class="panel-heading">
+          <h2 class="section-title">목록 이미지 브리핑</h2>
+          <button id="listImageBriefToggle" class="panel-toggle" type="button" aria-expanded="true" aria-controls="listImageBriefBody">접기</button>
+        </div>
+        <div id="listImageBriefBody" class="collapsible-body">
+          <form id="listImageBriefForm" class="list-image-brief-form">
+            <input id="listImageTitleInput" type="text" placeholder="보이는 게시글 제목" autocomplete="off" />
+            <button id="listImageBriefButton" type="submit">브리핑</button>
+          </form>
+          <div id="listImageBriefResult" class="list-image-brief-result" aria-live="polite"></div>
+        </div>
       </section>
       <section id="summaryPanel" class="panel"></section>
       <section id="memberPanel" class="panel"></section>
       <section id="cardPanel" class="panel"></section>
       <section id="actionsPanel" class="panel actions"></section>
+      <section id="contextChatPanel" class="panel context-chat">
+        <div id="contextChatMessages" class="context-chat-messages" aria-live="polite"></div>
+        <form id="contextQuestionForm" class="context-question-form">
+          <textarea id="contextQuestionInput" rows="2" placeholder="현재 맥락에서 질문"></textarea>
+          <button id="contextAskButton" type="submit">질문</button>
+        </form>
+      </section>
       <section id="errorPanel" class="error" hidden></section>
     </main>
-
-    <section id="contextChatPanel" class="context-chat">
-      <div id="contextChatMessages" class="context-chat-messages" aria-live="polite"></div>
-      <form id="contextQuestionForm" class="context-question-form">
-        <textarea id="contextQuestionInput" rows="2" placeholder="현재 맥락에서 질문"></textarea>
-        <button id="contextAskButton" type="submit">질문</button>
-      </form>
-    </section>
 
     <script src="sidepanel.js"></script>
   </body>

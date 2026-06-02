@@ -40,6 +40,8 @@
   const actionsPanel = document.querySelector("#actionsPanel");
   const errorPanel = document.querySelector("#errorPanel");
   const listImageBriefForm = document.querySelector("#listImageBriefForm");
+  const listImageBriefToggle = document.querySelector("#listImageBriefToggle");
+  const listImageBriefBody = document.querySelector("#listImageBriefBody");
   const listImageTitleInput = document.querySelector("#listImageTitleInput");
   const listImageBriefButton = document.querySelector("#listImageBriefButton");
   const listImageBriefResult = document.querySelector("#listImageBriefResult");
@@ -439,6 +441,12 @@
     listImageBriefButton.textContent = isBusy ? "브리핑 중" : "브리핑";
   }
 
+  function setListImageBriefCollapsed(collapsed) {
+    listImageBriefBody.hidden = collapsed;
+    listImageBriefToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    listImageBriefToggle.textContent = collapsed ? "펼치기" : "접기";
+  }
+
   async function observeCurrentPage(extraRequiredFeatures = []) {
     await fetchJson("/health");
     await ensureBackendCompatible(extraRequiredFeatures);
@@ -645,6 +653,9 @@
   });
   judgeButton.addEventListener("click", judgeCurrentPage);
   imageJudgeButton.addEventListener("click", judgeCurrentImages);
+  listImageBriefToggle.addEventListener("click", () => {
+    setListImageBriefCollapsed(!listImageBriefBody.hidden);
+  });
   listImageBriefForm.addEventListener("submit", briefListPostImages);
   contextQuestionForm.addEventListener("submit", askContextQuestion);
   startProxyButton.addEventListener("click", ensureOpenAIOAuthProxy);
