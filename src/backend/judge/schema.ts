@@ -22,7 +22,12 @@ export const policyEvidenceSchema = z.object({
   title: z.string().min(1),
   excerpt: z.string().min(1),
   relevance: z.number().min(0).max(1),
-  tags: z.array(z.string())
+  tags: z.array(z.string()),
+  category: z.string().optional(),
+  kind: z.enum(["rule", "exception", "procedure", "bot_command", "precedent"]).optional(),
+  guidance: z.string().optional(),
+  quote: z.string().optional(),
+  source_title: z.string().optional()
 }).strict();
 
 export const judgmentCardSchema = z.object({
@@ -74,6 +79,29 @@ function schemaSkeleton(): string {
   }, null, 2);
 }
 
+function compactPromptText(value: unknown, max = 180): string {
+  const normalized = String(value ?? "").replace(/\s+/gu, " ").trim();
+  return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
+}
+
+export function policyEvidenceForPrompt(evidence: PolicyEvidence[]): Array<{
+  id: string;
+  src: string;
+  cat: string;
+  rule: string;
+  quote: string;
+  rel: number;
+}> {
+  return evidence.map((item) => ({
+    id: item.rule_id,
+    src: item.source_post_no,
+    cat: compactPromptText(item.category ?? item.tags[0] ?? "운영 근거", 60),
+    rule: compactPromptText(item.guidance ?? item.excerpt, 180),
+    quote: compactPromptText(item.quote ?? item.excerpt, 180),
+    rel: item.relevance
+  }));
+}
+
 export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePrompt {
   const redactedObservation = redactObservation(options.observation);
   const uploadedImageMode = options.mode === "uploaded-images";
@@ -100,7 +128,7 @@ export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePromp
     JSON.stringify(redactedObservation, null, 2),
     "",
     "RETRIEVED POLICY / EVIDENCE POSTS:",
-    JSON.stringify(options.evidence, null, 2),
+    JSON.stringify(policyEvidenceForPrompt(options.evidence)),
     "",
     "JUDGMENT REQUIREMENTS:",
     "- Compare current-page quotes against policy evidence source_post_no values side by side.",

@@ -89,14 +89,37 @@ export interface PolicyDocument {
   excerpt: string;
   tags: string[];
   source_type: "post" | "seed";
+  compact_excerpt?: string;
+  policy_rules?: string[];
+}
+
+export type PolicyRuleKind = "rule" | "exception" | "procedure" | "bot_command" | "precedent";
+
+export interface PolicyRule {
+  rule_id: string;
+  source_post_no: string;
+  source_type: "post" | "seed";
+  source_title: string;
+  source_url?: string;
+  category: string;
+  kind: PolicyRuleKind;
+  trigger: string;
+  guidance: string;
+  quote: string;
+  keywords: string[];
+  tags: string[];
+  search_text: string;
+  priority?: number;
 }
 
 export interface PolicyCorpus {
+  schema_version?: number;
   source: string;
   capturedAt?: string;
   count: number;
   generatedAt: string;
   documents: PolicyDocument[];
+  rules?: PolicyRule[];
 }
 
 export interface PolicyEvidence {
@@ -106,6 +129,11 @@ export interface PolicyEvidence {
   excerpt: string;
   relevance: number;
   tags: string[];
+  category?: string;
+  kind?: PolicyRuleKind;
+  guidance?: string;
+  quote?: string;
+  source_title?: string;
 }
 
 export interface RecommendedAction {

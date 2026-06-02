@@ -6,9 +6,10 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { redactObservation } from "../shared/redaction.js";
 import { assertSafeAutomationAction, IRREVERSIBLE_DENYLIST } from "../shared/safety.js";
-import type { ModerationObservation, ObservationImage, PolicyCorpus } from "../shared/types.js";
+import type { ModerationObservation, ObservationImage, PolicyCorpus, PolicyEvidence } from "../shared/types.js";
 import { openAIOAuthProxyStatus } from "./auth/openaiOAuthProxy.js";
 import { auditDecision, judgeObservation } from "./judge/pipeline.js";
+import { policyEvidenceForPrompt } from "./judge/schema.js";
 import { makeMockJudgeProvider, makeOpenAIJudgeProvider, makeOpenAITextProvider } from "./judge/openaiProvider.js";
 import { ALLOWED_JUDGE_MODELS, isAllowedJudgeModel, resolveJudgeModel } from "./judge/models.js";
 import { isMemberRiskLevel, MemberProfileStore } from "./members/profiles.js";
@@ -218,7 +219,7 @@ async function loadUploadedImageInputs(images: ObservationImage[], pageUrl?: str
 function createContextChatPrompt(options: {
   observation: ModerationObservation;
   question: string;
-  evidence: unknown[];
+  evidence: PolicyEvidence[];
   card?: unknown;
   auditId?: string;
 }): { system: string; user: string } {
@@ -242,7 +243,7 @@ function createContextChatPrompt(options: {
     JSON.stringify(options.card ?? null, null, 2),
     "",
     "RETRIEVED POLICY / EVIDENCE POSTS:",
-    JSON.stringify(options.evidence, null, 2)
+    JSON.stringify(policyEvidenceForPrompt(options.evidence))
   ].join("\n");
   return { system, user };
 }
@@ -327,7 +328,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   server.post("/api/retrieve", async (request) => {
     const body = judgeRequestSchema.pick({ observation: true }).parse(request.body);
     const ingested = await ensureCorpus();
-    return { evidence: retrievePolicyEvidence(ingested, body.observation as ModerationObservation, 10) };
+    return { evidence: retrievePolicyEvidence(ingested, body.observation as ModerationObservation, 8) };
   });
 
   server.post("/api/members/observe", async (request) => {
@@ -355,7 +356,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       });
     }
     const ingested = await ensureCorpus();
-    const evidence = retrievePolicyEvidence(ingested, body.observation as ModerationObservation, 12);
+    const evidence = retrievePolicyEvidence(ingested, body.observation as ModerationObservation, 8);
     const mockEnabled = options.mockLlm ?? process.env.MAVEN_ALLOW_MOCK_LLM === "1";
     const provider = mockEnabled ? makeMockJudgeProvider() : makeOpenAIJudgeProvider();
     const result = await judgeObservation({
@@ -411,7 +412,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       }))
     };
     const ingested = await ensureCorpus();
-    const evidence = retrievePolicyEvidence(ingested, imageObservation, 12);
+    const evidence = retrievePolicyEvidence(ingested, imageObservation, 8);
     const mockEnabled = options.mockLlm ?? process.env.MAVEN_ALLOW_MOCK_LLM === "1";
     const provider = mockEnabled ? makeMockJudgeProvider() : makeOpenAIJudgeProvider();
     const result = await judgeObservation({
@@ -448,7 +449,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     const observation = body.observation as ModerationObservation;
     const model = resolveJudgeModel(body.model ?? process.env.OPENAI_MODEL);
     const ingested = await ensureCorpus();
-    const evidence = retrievePolicyEvidence(ingested, observation, 10);
+    const evidence = retrievePolicyEvidence(ingested, observation, 6);
     const prompt = createContextChatPrompt({
       observation,
       question: body.question,
