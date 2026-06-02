@@ -98,7 +98,10 @@
   }
 
   function getBodyRoot() {
-    return first(".write_div, .writing_view_box, .view_content_wrap article, article");
+    return first(".write_div") ||
+      first(".writing_view_box") ||
+      first(".view_content_wrap article") ||
+      first("article");
   }
 
   function getCounts() {
