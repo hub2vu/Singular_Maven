@@ -143,6 +143,15 @@ function imageMimeFromSource(src: string, fallbackType?: string | null): string 
   }
 }
 
+function shouldRedownloadImage(image: ObservationImage): boolean {
+  try {
+    const url = new URL(image.src);
+    return /(^|\.)dcinside\.(com|co\.kr)$/iu.test(url.hostname) || /^dcimg\d*\.dcinside\.co\.kr$/iu.test(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 async function downloadImageAsDataUrl(image: ObservationImage, pageUrl?: string): Promise<string> {
   if (!/^https?:\/\//iu.test(image.src)) {
     throw new Error("image source is not downloadable");
@@ -174,12 +183,16 @@ async function loadUploadedImageInputs(images: ObservationImage[], pageUrl?: str
   const failures: ImageLoadFailure[] = [];
   for (const image of images) {
     try {
-      if (isNonEmptyImageDataUrl(image.dataUrl)) {
+      if (shouldRedownloadImage(image)) {
+        loaded.push({ image, input: await downloadImageAsDataUrl(image, pageUrl) });
+      } else if (isNonEmptyImageDataUrl(image.dataUrl)) {
         loaded.push({ image, input: image.dataUrl as string });
       } else if (isNonEmptyImageDataUrl(image.src)) {
         loaded.push({ image, input: image.src });
-      } else {
+      } else if (/^https?:\/\//iu.test(image.src)) {
         loaded.push({ image, input: await downloadImageAsDataUrl(image, pageUrl) });
+      } else {
+        throw new Error("image source did not include downloadable URL or non-empty data URL");
       }
     } catch (error) {
       failures.push({ src: image.src, reason: String(error instanceof Error ? error.message : error) });
