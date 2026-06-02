@@ -39,6 +39,10 @@
   const cardPanel = document.querySelector("#cardPanel");
   const actionsPanel = document.querySelector("#actionsPanel");
   const errorPanel = document.querySelector("#errorPanel");
+  const listImageBriefForm = document.querySelector("#listImageBriefForm");
+  const listImageTitleInput = document.querySelector("#listImageTitleInput");
+  const listImageBriefButton = document.querySelector("#listImageBriefButton");
+  const listImageBriefResult = document.querySelector("#listImageBriefResult");
   const contextQuestionForm = document.querySelector("#contextQuestionForm");
   const contextQuestionInput = document.querySelector("#contextQuestionInput");
   const contextAskButton = document.querySelector("#contextAskButton");
@@ -427,6 +431,14 @@
     contextAskButton.textContent = isBusy ? "질문 중" : "질문";
   }
 
+  function setListImageBriefBusy(isBusy) {
+    listImageBriefButton.disabled = isBusy;
+    listImageTitleInput.disabled = isBusy;
+    judgeButton.disabled = isBusy;
+    imageJudgeButton.disabled = isBusy;
+    listImageBriefButton.textContent = isBusy ? "브리핑 중" : "브리핑";
+  }
+
   async function observeCurrentPage(extraRequiredFeatures = []) {
     await fetchJson("/health");
     await ensureBackendCompatible(extraRequiredFeatures);
@@ -456,6 +468,17 @@
     state.auditId = result.auditId;
     renderCard(state.card);
     renderActions();
+  }
+
+  function renderListImageBriefResult(result, observation, listPost) {
+    const title = observation?.title || listPost?.title || "";
+    const postNo = observation?.postNo || listPost?.postNo || "-";
+    const imageCount = result.imageCount ?? observation?.images?.length ?? 0;
+    listImageBriefResult.innerHTML = [
+      `<strong>${escapeHtml(title)}</strong>`,
+      `post: ${escapeHtml(postNo)} | images: ${escapeHtml(String(imageCount))}`,
+      escapeHtml(result.answer || "(empty image brief)")
+    ].join("\n");
   }
 
   async function inlineObservationImages(observation) {
@@ -525,6 +548,50 @@
     }
   }
 
+  async function briefListPostImages(event) {
+    event.preventDefault();
+    const title = listImageTitleInput.value.trim();
+    if (!title) {
+      setError("목록에서 보이는 게시글 제목을 입력하세요.");
+      return;
+    }
+    setError("");
+    listImageBriefResult.textContent = "";
+    storeRuntimeSettings();
+    setListImageBriefBusy(true);
+    try {
+      await fetchJson("/health");
+      await ensureBackendCompatible(["images.list-title-brief"]);
+      const observed = await sendMessage({ type: "MAVEN_OBSERVE_LIST_POST_BY_TITLE", title });
+      if (!observed?.ok) {
+        throw new Error(observed?.reason || "list post image observation failed");
+      }
+      if (!observed.observation || !Array.isArray(observed.observation.images) || observed.observation.images.length === 0) {
+        throw new Error("The matched post did not expose uploaded images.");
+      }
+      const imageObservation = await inlineObservationImages(observed.observation);
+      const result = await fetchJson("/api/images/brief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          observation: imageObservation,
+          model: selectedModel()
+        })
+      });
+      state.observation = imageObservation;
+      state.card = null;
+      state.auditId = null;
+      renderListImageBriefResult(result, imageObservation, observed.listPost);
+      state.contextMessages.push({ role: "assistant", content: `목록 이미지 브리핑:\n${result.answer || ""}` });
+      renderContextMessages();
+      authStatus.textContent = `image brief | ${result.model || selectedModel()}`;
+    } catch (error) {
+      handleJudgeError(error);
+    } finally {
+      setListImageBriefBusy(false);
+    }
+  }
+
   async function askContextQuestion(event) {
     event.preventDefault();
     const question = contextQuestionInput.value.trim();
@@ -578,6 +645,7 @@
   });
   judgeButton.addEventListener("click", judgeCurrentPage);
   imageJudgeButton.addEventListener("click", judgeCurrentImages);
+  listImageBriefForm.addEventListener("submit", briefListPostImages);
   contextQuestionForm.addEventListener("submit", askContextQuestion);
   startProxyButton.addEventListener("click", ensureOpenAIOAuthProxy);
   refreshStatus();

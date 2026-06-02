@@ -217,6 +217,29 @@ main {
   display: none;
 }
 
+.list-image-brief {
+  display: grid;
+  gap: 8px;
+}
+
+.list-image-brief-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.list-image-brief-result {
+  color: var(--muted);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.list-image-brief-result:empty {
+  display: none;
+}
+
 .context-chat {
   position: sticky;
   bottom: 0;

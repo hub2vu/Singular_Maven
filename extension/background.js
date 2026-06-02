@@ -70,6 +70,97 @@ async function observeActiveTab() {
   }
 }
 
+function normalizeTitle(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function findVisibleListPost(posts, title) {
+  const needle = normalizeTitle(title);
+  if (!needle) return undefined;
+  const candidates = (posts || []).filter((post) => post?.title && post?.url);
+  return candidates.find((post) => normalizeTitle(post.title) === needle) ||
+    candidates.find((post) => normalizeTitle(post.title).includes(needle)) ||
+    candidates.find((post) => needle.includes(normalizeTitle(post.title)));
+}
+
+async function collectVisibleListPostsFromActiveTab() {
+  const tab = await activeTab();
+  const result = await sendMessageWithContentScript(tab, { type: "MAVEN_COLLECT_VISIBLE_LIST_POSTS" });
+  if (!result?.ok) {
+    throw new Error(result?.reason || "visible list posts could not be collected");
+  }
+  return result;
+}
+
+function waitForTabComplete(tab) {
+  if (!tab?.id || tab.status === "complete" || !chrome.tabs.onUpdated?.addListener) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      chrome.tabs.onUpdated?.removeListener?.(listener);
+      resolve();
+    };
+    const listener = (tabId, changeInfo) => {
+      if (tabId === tab.id && changeInfo?.status === "complete") {
+        finish();
+      }
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    if (typeof setTimeout === "function") {
+      setTimeout(finish, 15000);
+    }
+  });
+}
+
+async function observeUrlInInactiveTab(url) {
+  const tab = await chrome.tabs.create({ url, active: false });
+  if (!tab?.id) {
+    throw new Error("inactive tab could not be created");
+  }
+  const targetTab = { ...tab, url: tab.url || url };
+  try {
+    await waitForTabComplete(targetTab);
+    const observed = await sendMessageWithContentScript(targetTab, { type: "MAVEN_COLLECT_OBSERVATION" });
+    if (!observed?.ok) {
+      throw new Error(observed?.reason || "inactive tab observation failed");
+    }
+    return observed;
+  } finally {
+    if (chrome.tabs.remove) {
+      await chrome.tabs.remove(tab.id).catch(() => {});
+    }
+  }
+}
+
+async function observeListPostByTitle(title) {
+  const listResult = await collectVisibleListPostsFromActiveTab();
+  const listPost = findVisibleListPost(listResult.posts, title);
+  if (!listPost) {
+    return {
+      ok: false,
+      reason: `No visible list post matched title: ${title || ""}`,
+      candidates: (listResult.posts || []).slice(0, 20).map((post) => post.title)
+    };
+  }
+  if (!listPost.hasImage) {
+    return {
+      ok: false,
+      reason: `Matched list post has no attached-image marker: ${listPost.title}`,
+      listPost
+    };
+  }
+  const observed = await observeUrlInInactiveTab(listPost.url);
+  return {
+    ok: true,
+    listPost,
+    observation: observed.observation
+  };
+}
+
 function bytesToBase64(bytes) {
   let binary = "";
   const chunkSize = 0x8000;
@@ -213,6 +304,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
     if (message?.type === "MAVEN_SAFE_ACTION") {
       sendResponse(await safeActionOnActiveTab(message.action || {}));
+      return;
+    }
+    if (message?.type === "MAVEN_OBSERVE_LIST_POST_BY_TITLE") {
+      sendResponse(await observeListPostByTitle(message.title));
       return;
     }
     if (message?.type === "MAVEN_INLINE_IMAGE_URLS") {

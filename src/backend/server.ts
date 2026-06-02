@@ -10,7 +10,7 @@ import type { ModerationObservation, ObservationImage, PolicyCorpus, PolicyEvide
 import { openAIOAuthProxyStatus } from "./auth/openaiOAuthProxy.js";
 import { auditDecision, judgeObservation } from "./judge/pipeline.js";
 import { policyEvidenceForPrompt } from "./judge/schema.js";
-import { makeMockJudgeProvider, makeOpenAIJudgeProvider, makeOpenAITextProvider } from "./judge/openaiProvider.js";
+import { makeMockJudgeProvider, makeOpenAIImageBriefProvider, makeOpenAIJudgeProvider, makeOpenAITextProvider } from "./judge/openaiProvider.js";
 import { ALLOWED_JUDGE_MODELS, isAllowedJudgeModel, resolveJudgeModel } from "./judge/models.js";
 import { isMemberRiskLevel, MemberProfileStore } from "./members/profiles.js";
 import { discoverPolicyPath } from "./policy/pathDiscovery.js";
@@ -112,6 +112,7 @@ const MAVEN_CAPABILITIES = {
     "openai-oauth-proxy",
     "judge.model-select",
     "judge.uploaded-images",
+    "images.list-title-brief",
     "context.chat"
   ]
 } as const;
@@ -246,6 +247,33 @@ function createContextChatPrompt(options: {
     JSON.stringify(policyEvidenceForPrompt(options.evidence))
   ].join("\n");
   return { system, user };
+}
+
+function createImageBriefPrompt(options: {
+  observation: ModerationObservation;
+  imageSourceUrls: string[];
+}): { system: string; user: string } {
+  const system = [
+    "You are a read-only DCInside Maven image briefing assistant.",
+    "Describe only the attached images from the selected post. Ignore ads, page chrome, screenshots, profile icons, and unrelated UI.",
+    "This is not a moderation judgment card. Do not recommend deletion, banning, or any irreversible action.",
+    "Brief the visible subject, objects, characters, text, and uncertainty. Mention moderation-relevant visual cues only as cues, not as final decisions.",
+    "Answer in concise Korean."
+  ].join("\n");
+  const user = [
+    "SELECTED POST OBSERVATION (redacted JSON):",
+    JSON.stringify(redactObservation(options.observation), null, 2),
+    "",
+    "ATTACHED IMAGE SOURCE URLS:",
+    JSON.stringify(options.imageSourceUrls, null, 2),
+    "",
+    "Write 3-6 concise bullets. Include image count. If the image is hard to read, say what is uncertain."
+  ].join("\n");
+  return { system, user };
+}
+
+function mockImageBrief(observation: ModerationObservation, imageCount: number): string {
+  return `mock image brief: ${observation.title} includes ${imageCount} uploaded image(s). This response describes the selected post images only and does not create a moderation judgment card.`;
 }
 
 function mockContextAnswer(question: string, observation: ModerationObservation): string {
@@ -430,6 +458,66 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     return {
       auditId: result.auditId,
       card: result.card,
+      imageCount: loadedImages.length,
+      attachedImageUrls: loadedImages.map((image) => image.src),
+      imageLoadFailures: imageInputs.failures
+    };
+  });
+
+  server.post("/api/images/brief", async (request, reply) => {
+    const body = judgeRequestSchema.parse(request.body);
+    if (body.model !== undefined && !isAllowedJudgeModel(body.model)) {
+      return reply.code(400).send({
+        error: "Unsupported judge model",
+        model: body.model,
+        allowedModels: ALLOWED_JUDGE_MODELS
+      });
+    }
+
+    const observation = body.observation as ModerationObservation;
+    const images = uploadedPostImages(observation);
+    if (!images.length) {
+      return reply.code(400).send({
+        error: "No uploaded post images found",
+        message: "No uploaded post images remained after excluding ad-like, UI, and tracking images."
+      });
+    }
+
+    const imageInputs = await loadUploadedImageInputs(images, observation.url);
+    if (!imageInputs.loaded.length) {
+      return reply.code(400).send({
+        error: "Uploaded post images could not be loaded",
+        message: "Uploaded post image URLs were found, but none could be loaded as non-empty images.",
+        failures: imageInputs.failures
+      });
+    }
+
+    const loadedImages = imageInputs.loaded.map((item) => item.image);
+    const imageObservation: ModerationObservation = {
+      ...observation,
+      images: loadedImages.map((image) => ({
+        src: image.src,
+        alt: image.alt,
+        nearbyText: image.nearbyText
+      }))
+    };
+    const model = resolveJudgeModel(body.model ?? process.env.OPENAI_MODEL);
+    const prompt = createImageBriefPrompt({
+      observation: imageObservation,
+      imageSourceUrls: loadedImages.map((image) => image.src)
+    });
+    const mockEnabled = options.mockLlm ?? process.env.MAVEN_ALLOW_MOCK_LLM === "1";
+    const answer = mockEnabled
+      ? mockImageBrief(imageObservation, loadedImages.length)
+      : await makeOpenAIImageBriefProvider()({
+        ...prompt,
+        model,
+        imageUrls: imageInputs.loaded.map((item) => item.input)
+      });
+
+    return {
+      answer,
+      model,
       imageCount: loadedImages.length,
       attachedImageUrls: loadedImages.map((image) => image.src),
       imageLoadFailures: imageInputs.failures

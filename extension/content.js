@@ -347,6 +347,84 @@
       .slice(0, 80);
   }
 
+  function urlPostNo(url) {
+    try {
+      return new URL(url, location.href).searchParams.get("no") || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  function absoluteUrl(href) {
+    try {
+      return new URL(href, location.href).href;
+    } catch {
+      return "";
+    }
+  }
+
+  function hasAttachedImageMarker(row, titleCell) {
+    const root = titleCell || row;
+    const candidates = all([
+      ".icon_pic",
+      ".icon_img",
+      ".ico_pic",
+      ".ico_img",
+      ".list_icon_pic",
+      ".list_icon_img",
+      "[class*='icon_pic']",
+      "[class*='icon_img']",
+      "[class*='ico_pic']",
+      "[class*='ico_img']",
+      "img"
+    ].join(","), root);
+
+    return candidates.some((element) => {
+      const haystack = normalize([
+        element.className,
+        element.id,
+        element.getAttribute("src"),
+        element.getAttribute("alt"),
+        element.getAttribute("title"),
+        element.getAttribute("aria-label"),
+        textOf(element)
+      ].filter(Boolean).join(" ")).toLowerCase();
+      if (!haystack) return false;
+      return /(^|[\s_.-])(pic|photo|image|img|attach|file)([\s_.-]|$)/iu.test(haystack) ||
+        /첨부|이미지|사진/u.test(haystack);
+    });
+  }
+
+  function collectVisibleListPosts() {
+    const rows = all(".gall_list tbody tr.ub-content, .gall_list tbody tr, tr.ub-content");
+    const posts = rows.map((row) => {
+      if (!(row instanceof HTMLElement) || !isVisible(row) || !inViewport(row)) return undefined;
+      const titleCell = first(".gall_tit, .ub-word, td:nth-child(2)", row) || row;
+      const link = first("a[href*='/board/view/'], a[href*='board/view']", titleCell);
+      if (!(link instanceof HTMLElement)) return undefined;
+      const title = textOf(link);
+      const url = absoluteUrl(link.getAttribute("href") || "");
+      if (!title || !url) return undefined;
+      const subject = textOf(first(".gall_subject", row)) || textOf(row.querySelector("td"));
+      const writer = getAuthorFromElement(first(".gall_writer, .ub-writer, [data-uid], [data-user-id], [data-ip]", row) || row);
+      return {
+        title,
+        url,
+        postNo: urlPostNo(url),
+        head: subject || undefined,
+        author: writer?.name ? writer : undefined,
+        hasImage: hasAttachedImageMarker(row, titleCell)
+      };
+    }).filter(Boolean);
+
+    return {
+      ok: true,
+      url: location.href,
+      galleryId: getUrlParam("id"),
+      posts
+    };
+  }
+
   function collectObservation() {
     const bodyRoot = getBodyRoot();
     const textRoot = bodyRoot || document.body;
@@ -422,6 +500,10 @@
         sendResponse({ ok: true, observation: collectObservation() });
         return true;
       }
+      if (message?.type === "MAVEN_COLLECT_VISIBLE_LIST_POSTS") {
+        sendResponse(collectVisibleListPosts());
+        return true;
+      }
       if (message?.type === "MAVEN_RESOLVE_COMMENT_UIDS") {
         resolveCommentUids(message.observation).then((observation) => {
           sendResponse({ ok: true, observation });
@@ -439,6 +521,7 @@
   }
 
   window.__dcMavenCollectObservationForTest = collectObservation;
+  window.__dcMavenCollectVisibleListPostsForTest = collectVisibleListPosts;
   window.__dcMavenResolveCommentUidsForTest = resolveCommentUids;
   window.__dcMavenSafeActionForTest = safeAction;
 })();

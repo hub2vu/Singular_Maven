@@ -29,6 +29,12 @@ export interface TextProviderInput {
 
 export type TextProvider = (input: TextProviderInput) => Promise<string>;
 
+export interface ImageBriefProviderInput extends TextProviderInput {
+  imageUrls: string[];
+}
+
+export type ImageBriefProvider = (input: ImageBriefProviderInput) => Promise<string>;
+
 function extractOutputText(response: any): string {
   const messageContent = response.choices?.[0]?.message?.content;
   if (typeof messageContent === "string") return messageContent;
@@ -110,6 +116,43 @@ export function makeOpenAITextProvider(options: OpenAIJudgeProviderOptions = {})
       { role: "system", content: system },
       ...history.map((item) => ({ role: item.role, content: item.content })),
       { role: "user", content: user }
+    ];
+    const response = await fetch(`${status.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: options.model ?? model,
+        messages,
+        temperature: 0.2
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`openai-oauth request failed ${response.status}: ${errorText.slice(0, 500)}`);
+    }
+
+    return extractOutputText(await response.json());
+  };
+}
+
+export function makeOpenAIImageBriefProvider(options: OpenAIJudgeProviderOptions = {}): ImageBriefProvider {
+  return async ({ system, user, model, history = [], imageUrls }) => {
+    const status = await ensureOpenAIOAuthProxy({
+      baseUrl: options.baseUrl,
+      port: options.port,
+      autoStart: options.autoStartProxy
+    });
+
+    const messages = [
+      { role: "system", content: system },
+      ...history.map((item) => ({ role: item.role, content: item.content })),
+      {
+        role: "user",
+        content: buildUserContent({ system, user }, { imageUrls, visionEnabled: true })
+      }
     ];
     const response = await fetch(`${status.baseUrl}/v1/chat/completions`, {
       method: "POST",
