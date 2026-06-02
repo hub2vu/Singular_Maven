@@ -165,6 +165,10 @@ function clampRelevance(score: number, topScore: number): number {
   return Number(Math.max(0.1, Math.min(0.99, score / topScore)).toFixed(2));
 }
 
+function hasEnoughSignal(score: number, topScore: number): boolean {
+  return score >= 1.5 || (score >= 0.8 && topScore > 0 && score / topScore >= 0.18);
+}
+
 function selectDiverse(scored: Array<{ rule: PolicyRule; score: number }>, limit: number): Array<{ rule: PolicyRule; score: number }> {
   const selected: Array<{ rule: PolicyRule; score: number }> = [];
   const selectedIds = new Set<string>();
@@ -194,11 +198,12 @@ export function retrievePolicyEvidence(corpus: PolicyCorpus, observation: Modera
   const rawQuery = observationText(observation);
   const queryTokens = tokenize(rawQuery);
   const queryTags = inferQueryTags(rawQuery);
-  const scored = rulesForCorpus(corpus)
+  const allScored = rulesForCorpus(corpus)
     .map((rule) => ({ rule, score: scoreRule(rule, queryTokens, queryTags, rawQuery) }))
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.rule.source_post_no.localeCompare(b.rule.source_post_no));
-  const topScore = scored[0]?.score ?? 1;
+  const topScore = allScored[0]?.score ?? 1;
+  const scored = allScored.filter((item) => hasEnoughSignal(item.score, topScore));
 
   return selectDiverse(scored, limit).map(({ rule, score }) => ({
     rule_id: rule.rule_id,
