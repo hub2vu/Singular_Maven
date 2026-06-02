@@ -155,6 +155,54 @@ export interface PolicyEvidenceQuote {
 
 export type CommentFightingLikelihood = "low" | "medium" | "high";
 
+export type CommentCliqueLikelihood = "low" | "medium" | "high";
+
+export type CommentNicknameMentionPolicyRisk = "low" | "medium" | "high";
+
+export type CommentCliqueSignalSeverity = "low" | "medium" | "high";
+
+export type CommentCliqueRole =
+  | "initiator"
+  | "participant"
+  | "mentioned_user"
+  | "target"
+  | "amplifier"
+  | "neutral";
+
+export type CommentCliqueSignalType =
+  | "nickname_mention_only"
+  | "repeated_unnecessary_nickname_mentions"
+  | "affectionate_nickname_or_title"
+  | "personal_history_reference"
+  | "inside_joke"
+  | "off_topic_private_chat"
+  | "external_private_channel"
+  | "specific_user_recruitment"
+  | "named_user_fan_service"
+  | "clique_or_in_group_language"
+  | "staff_favoritism_or_staff_socializing"
+  | "accusation_only"
+  | "moderation_context"
+  | "false_positive_exempt";
+
+export interface CommentCliqueSignal {
+  signal_type: CommentCliqueSignalType;
+  severity: CommentCliqueSignalSeverity;
+  comment_indices: number[];
+  user_keys: string[];
+  rationale: string;
+}
+
+export interface CommentCliqueEvidenceQuote {
+  comment_index: number;
+  speaker_user_key?: string;
+  target_user_key?: string;
+  quote: string;
+  signal_type: CommentCliqueSignalType;
+  severity: CommentCliqueSignalSeverity;
+  why_it_matters: string;
+}
+
 export type CommentUserRole =
   | "aggressor"
   | "target"
@@ -175,11 +223,23 @@ export interface CommentUserAssessment {
   risk_level: CommentUserRiskLevel;
   rationale: string;
   evidence_quotes: string[];
+  clique_role?: CommentCliqueRole;
+  clique_risk_level?: CommentCliqueLikelihood;
+  clique_rationale?: string;
+  clique_evidence_quotes?: CommentCliqueEvidenceQuote[];
+  clique_fp_exemptions?: string[];
 }
 
 export interface CommentThreadAssessment {
   fighting_likelihood: CommentFightingLikelihood;
   fighting_summary: string;
+  clique_likelihood?: CommentCliqueLikelihood;
+  clique_summary?: string;
+  nickname_mention_policy_risk?: CommentNicknameMentionPolicyRisk;
+  clique_requires_human_review?: boolean;
+  clique_confidence?: number;
+  clique_signals?: CommentCliqueSignal[];
+  clique_fp_guardrails_applied?: string[];
   per_user: CommentUserAssessment[];
 }
 

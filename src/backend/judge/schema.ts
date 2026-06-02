@@ -30,9 +30,53 @@ export const policyEvidenceSchema = z.object({
   source_title: z.string().optional()
 }).strict();
 
+const commentCliqueSignalTypeSchema = z.enum([
+  "nickname_mention_only",
+  "repeated_unnecessary_nickname_mentions",
+  "affectionate_nickname_or_title",
+  "personal_history_reference",
+  "inside_joke",
+  "off_topic_private_chat",
+  "external_private_channel",
+  "specific_user_recruitment",
+  "named_user_fan_service",
+  "clique_or_in_group_language",
+  "staff_favoritism_or_staff_socializing",
+  "accusation_only",
+  "moderation_context",
+  "false_positive_exempt"
+]);
+
+const commentCliqueSignalSeveritySchema = z.enum(["low", "medium", "high"]);
+
+const commentCliqueEvidenceQuoteSchema = z.object({
+  comment_index: z.number().int().positive(),
+  speaker_user_key: z.string().optional(),
+  target_user_key: z.string().optional(),
+  quote: z.string().min(1),
+  signal_type: commentCliqueSignalTypeSchema,
+  severity: commentCliqueSignalSeveritySchema,
+  why_it_matters: z.string().min(1)
+}).strict();
+
+const commentCliqueSignalSchema = z.object({
+  signal_type: commentCliqueSignalTypeSchema,
+  severity: commentCliqueSignalSeveritySchema,
+  comment_indices: z.array(z.number().int().positive()),
+  user_keys: z.array(z.string()),
+  rationale: z.string().min(1)
+}).strict();
+
 const commentThreadAssessmentSchema = z.object({
   fighting_likelihood: z.enum(["low", "medium", "high"]),
   fighting_summary: z.string().min(1),
+  clique_likelihood: z.enum(["low", "medium", "high"]).optional(),
+  clique_summary: z.string().min(1).optional(),
+  nickname_mention_policy_risk: z.enum(["low", "medium", "high"]).optional(),
+  clique_requires_human_review: z.boolean().optional(),
+  clique_confidence: z.number().min(0).max(1).optional(),
+  clique_signals: z.array(commentCliqueSignalSchema).optional(),
+  clique_fp_guardrails_applied: z.array(z.string()).optional(),
   per_user: z.array(z.object({
     user_key: z.string().min(1),
     display_name: z.string().optional(),
@@ -42,7 +86,12 @@ const commentThreadAssessmentSchema = z.object({
     role: z.enum(["aggressor", "target", "participant", "de-escalator", "neutral", "spam-or-bot"]),
     risk_level: z.enum(["low", "watch", "high"]),
     rationale: z.string().min(1),
-    evidence_quotes: z.array(z.string().min(1))
+    evidence_quotes: z.array(z.string().min(1)),
+    clique_role: z.enum(["initiator", "participant", "mentioned_user", "target", "amplifier", "neutral"]).optional(),
+    clique_risk_level: z.enum(["low", "medium", "high"]).optional(),
+    clique_rationale: z.string().min(1).optional(),
+    clique_evidence_quotes: z.array(commentCliqueEvidenceQuoteSchema).optional(),
+    clique_fp_exemptions: z.array(z.string()).optional()
   }).strict())
 }).strict();
 
@@ -98,6 +147,19 @@ function schemaSkeleton(commentMode = false): string {
     skeleton.comment_thread_assessment = {
       fighting_likelihood: "low | medium | high",
       fighting_summary: "string",
+      clique_likelihood: "low | medium | high",
+      clique_summary: "string",
+      nickname_mention_policy_risk: "low | medium | high",
+      clique_requires_human_review: true,
+      clique_confidence: 0.0,
+      clique_signals: [{
+        signal_type: "nickname_mention_only | repeated_unnecessary_nickname_mentions | affectionate_nickname_or_title | personal_history_reference | inside_joke | off_topic_private_chat | external_private_channel | specific_user_recruitment | named_user_fan_service | clique_or_in_group_language | staff_favoritism_or_staff_socializing | accusation_only | moderation_context | false_positive_exempt",
+        severity: "low | medium | high",
+        comment_indices: [1],
+        user_keys: ["uid:example"],
+        rationale: "string"
+      }],
+      clique_fp_guardrails_applied: ["nickname_mention_only_is_not_clique"],
       per_user: [{
         user_key: "uid:example | ip-name:ip:name | ip:example | name:example",
         display_name: "string",
@@ -107,7 +169,20 @@ function schemaSkeleton(commentMode = false): string {
         role: "aggressor | target | participant | de-escalator | neutral | spam-or-bot",
         risk_level: "low | watch | high",
         rationale: "string",
-        evidence_quotes: ["string"]
+        evidence_quotes: ["string"],
+        clique_role: "initiator | participant | mentioned_user | target | amplifier | neutral",
+        clique_risk_level: "low | medium | high",
+        clique_rationale: "string",
+        clique_evidence_quotes: [{
+          comment_index: 1,
+          speaker_user_key: "uid:example",
+          target_user_key: "uid:example",
+          quote: "string",
+          signal_type: "personal_history_reference",
+          severity: "low | medium | high",
+          why_it_matters: "string"
+        }],
+        clique_fp_exemptions: ["emoji_or_sticker_only_is_not_clique"]
       }]
     };
   }
@@ -177,6 +252,15 @@ export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePromp
       "- 개별 댓글러별로 uid > ip+name > ip > name 순서의 user_key를 정하고 per_user에 comment_indices, role, risk_level, rationale, evidence_quotes를 적는다.",
       "- 같은 댓글러가 여러 댓글을 쓴 경우 합산 평가하되, 어떤 댓글 번호와 인용문 때문인지 반드시 남긴다.",
       "- 댓글 판단 모드에서는 comment_thread_assessment를 반드시 채운다."
+    ] : []),
+    ...(commentMode ? [
+      "- 친목/네임드화 판단도 수행한다. clique_likelihood low/medium/high와 clique_summary를 채운다.",
+      "- 닉언 정책 리스크와 친목/네임드화 리스크는 분리한다. nickname_mention_policy_risk는 별도 필드로 적는다.",
+      "- 단순 닉네임 언급, @호출, 디시콘, 이모티콘, 스티커, 밈 반응, 완장/파딱 같은 역할 언급만으로 친목으로 판정하지 않는다. 이런 오탐 가드는 nickname_mention_only 또는 false_positive_exempt signal로 남긴다.",
+      "- '친목이다'라는 비난 자체는 근거가 아니다. 실제 댓글에 사적 친분, 내부자 언어, 외부 채널, 반복적 개인 대화가 있어야 한다.",
+      "- high는 외부/사적 채널 유도, 우리끼리식 배제 언어, 반복적 사담, 특정 고닉 중심 호감작 등 강한 근거가 있을 때만 사용한다.",
+      "- per_user에는 가능하면 clique_role, clique_risk_level, clique_rationale, clique_evidence_quotes, clique_fp_exemptions를 함께 채운다.",
+      "- clique_evidence_quotes는 실제 댓글 원문에서 최소 구간만 인용하고 signal_type, severity, why_it_matters를 남긴다."
     ] : []),
     ...(uploadedImageMode ? [
       "- Judge only the author-uploaded images listed in CURRENT PAGE OBSERVATION.images and attached as image_url inputs.",

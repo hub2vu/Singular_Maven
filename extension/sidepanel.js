@@ -311,6 +311,53 @@
     `;
   }
 
+  function formatCliqueSignal(signal) {
+    if (!signal || typeof signal !== "object") return "";
+    const indices = Array.isArray(signal.comment_indices) ? signal.comment_indices.join(", ") : "-";
+    const users = Array.isArray(signal.user_keys) ? signal.user_keys.join(", ") : "-";
+    return `${signal.signal_type || "-"} / ${signal.severity || "-"} / comments: ${indices} / users: ${users}\n${signal.rationale || ""}`;
+  }
+
+  function formatCliqueEvidenceQuote(item) {
+    if (typeof item === "string") return `"${item}"`;
+    if (!item || typeof item !== "object") return "";
+    const user = item.speaker_user_key || item.target_user_key || "-";
+    return `#${item.comment_index || "-"} ${item.signal_type || "-"} / ${item.severity || "-"} / ${user}: "${item.quote || ""}" - ${item.why_it_matters || ""}`;
+  }
+
+  function renderCliqueAssessment(assessment) {
+    const signals = Array.isArray(assessment.clique_signals)
+      ? assessment.clique_signals.map(formatCliqueSignal).filter(Boolean)
+      : [];
+    const guardrails = Array.isArray(assessment.clique_fp_guardrails_applied)
+      ? assessment.clique_fp_guardrails_applied
+      : [];
+    const hasCliqueAssessment = Boolean(
+      assessment.clique_likelihood ||
+      assessment.clique_summary ||
+      assessment.nickname_mention_policy_risk ||
+      signals.length ||
+      guardrails.length
+    );
+    if (!hasCliqueAssessment) return "";
+    const confidence = typeof assessment.clique_confidence === "number"
+      ? ` | confidence: ${Math.round(assessment.clique_confidence * 100)}%`
+      : "";
+    const humanReview = typeof assessment.clique_requires_human_review === "boolean"
+      ? ` | human review: ${assessment.clique_requires_human_review ? "yes" : "no"}`
+      : "";
+    return `
+      <h3 class="section-title">친목/네임드화</h3>
+      <div class="quote">
+        <strong>${escapeHtml(assessment.clique_likelihood || "-")}</strong>
+        | 닉언 정책 리스크: ${escapeHtml(assessment.nickname_mention_policy_risk || "-")}${escapeHtml(confidence)}${escapeHtml(humanReview)}<br />
+        ${escapeHtml(assessment.clique_summary || "-")}
+      </div>
+      ${signals.length ? `<div class="quote"><strong>signals</strong><br />${escapeHtml(signals.join("\n"))}</div>` : ""}
+      ${guardrails.length ? `<div class="quote"><strong>false-positive guardrails</strong><br />${escapeHtml(guardrails.join("\n"))}</div>` : ""}
+    `;
+  }
+
   function renderCommentThreadAssessment(card) {
     const assessment = card.comment_thread_assessment;
     if (!assessment || typeof assessment !== "object") return "";
@@ -323,12 +370,30 @@
       ].filter(Boolean).join(" | ");
       const indices = Array.isArray(user.comment_indices) ? user.comment_indices.join(", ") : "-";
       const quotes = Array.isArray(user.evidence_quotes) ? user.evidence_quotes.map((quote) => `"${quote}"`).join("\n") : "-";
+      const cliqueEvidence = Array.isArray(user.clique_evidence_quotes)
+        ? user.clique_evidence_quotes.map(formatCliqueEvidenceQuote).filter(Boolean)
+        : [];
+      const cliqueExemptions = Array.isArray(user.clique_fp_exemptions) ? user.clique_fp_exemptions : [];
+      const hasUserClique = Boolean(
+        user.clique_role ||
+        user.clique_risk_level ||
+        user.clique_rationale ||
+        cliqueEvidence.length ||
+        cliqueExemptions.length
+      );
+      const userCliqueBlock = hasUserClique
+        ? `<br />
+          clique: ${escapeHtml(user.clique_role || "-")} / ${escapeHtml(user.clique_risk_level || "-")}<br />
+          ${escapeHtml(user.clique_rationale || "-")}<br />
+          clique evidence: ${escapeHtml(cliqueEvidence.join("\n") || "-")}<br />
+          clique fp exemptions: ${escapeHtml(cliqueExemptions.join("\n") || "-")}`
+        : "";
       return `
         <div class="quote">
           <strong>${escapeHtml(identity)}</strong> / ${escapeHtml(user.role || "-")} / ${escapeHtml(user.risk_level || "-")}<br />
           comments: ${escapeHtml(indices)}<br />
           ${escapeHtml(user.rationale || "-")}<br />
-          evidence: ${escapeHtml(quotes)}
+          evidence: ${escapeHtml(quotes)}${userCliqueBlock}
         </div>
       `;
     }).join("");
@@ -338,6 +403,7 @@
         <strong>${escapeHtml(assessment.fighting_likelihood || "-")}</strong><br />
         ${escapeHtml(assessment.fighting_summary || "-")}
       </div>
+      ${renderCliqueAssessment(assessment)}
       <h3 class="section-title">댓글러별 판단</h3>
       ${perUser || "<p>-</p>"}
     `;
