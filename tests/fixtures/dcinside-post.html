@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>이왜특 정치 떡밥인가? - 특이점이 온다 마이너 갤러리</title>
+  </head>
+  <body>
+    <aside class="ad_wrap">
+      <img src="https://ads.example/banner.png" alt="광고 배너" />
+    </aside>
+    <main class="view_content_wrap">
+      <section class="gallview_head">
+        <div class="title">
+          <span class="title_headtext">일반</span>
+          <span class="title_subject">이왜특 정치 떡밥인가?</span>
+        </div>
+        <div class="gall_writer ub-writer" data-uid="semi123" data-ip="118.235">
+          <span class="nickname">테스터</span>
+        </div>
+        <span class="gall_date">2026.06.02 12:03:04</span>
+        <span class="gall_count">조회 101</span>
+        <span class="gall_recommend">추천 0</span>
+        <span class="gall_comment">댓글 2</span>
+      </section>
+      <article class="write_div">
+        <p>본문 핵심: 기술적 특이점과 무관한 정치 떡밥 및 닉언콘 의심 문맥입니다.</p>
+        <p>타 커뮤니티 캡처를 조롱하는 문장도 있습니다.</p>
+        <img src="https://dcimg.example/risk.png" alt="정치 캡처 이미지" />
+        <img src="" alt="빈 이미지 src는 현재 게시글 URL로 resolve되므로 제외되어야 합니다" />
+        <div class="ad_box">
+          <img src="https://ads.example/inline-ad.png" alt="본문 광고" />
+        </div>
+        <a href="https://example.com/promo">홍보 링크</a>
+      </article>
+      <div class="appending_file_box">
+        <strong>원본 첨부파일 <em class="font_red">3</em></strong>
+        <ul class="appending_file">
+          <li><a href="https://image.dcinside.com/download.php?no=abc123&f_no=ChatGPT%20Image%202026%EB%85%84%206%EC%9B%94%202%EC%9D%BC%20%EC%98%A4%ED%9B%84%2012_59_35.png">ChatGPT Image 2026년 6월 2일 오후 12_59_35.png</a></li>
+          <li><a href="https://image.dcinside.com/download.php?no=def456&f_no=image.png">image.png</a></li>
+          <li><a href="https://image.dcinside.com/download.php?no=ghi789&f_no=image.png">image.png</a></li>
+        </ul>
+      </div>
+      <section id="comments" class="comment_box">
+        <ul class="cmt_list">
+          <li id="comment_li_1" class="ub-content" data-ip="223.39">
+            <span class="name comment-nickname" data-memo-uid="indoor4684">ㅇㅇ</span>
+            <span class="date_time">06.02 12:04:00</span>
+            <p class="usertxt ub-word">@특갤봇 댓글방어(3) 도배기 대응?</p>
+          </li>
+          <li id="reply_li_2" class="ub-content reply" data-uid="replyuser" data-ip="118.235">
+            <span class="name">반고닉</span>
+            <span class="date_time">06.02 12:05:00</span>
+            <p class="usertxt ub-word">@테스터 닉언콘으로 친목 중 <img class="written_dccon" src="https://dcimg.example/comment-con.png" alt="저격콘" /></p>
+          </li>
+          <li id="comment_li_3" class="ub-content" data-ip="211.36">
+            <span class="gall_writer ub-writer" data-nick="퐁칸8" data-uid="zxvw157" data-ip="">
+              <span class="nickname in"><em>퐁칸8</em></span>
+            </span>
+            <span class="date_time">06.02 12:06:00</span>
+            <p class="usertxt ub-word">실제 DC 댓글처럼 하위 gall_writer에 uid가 있는 케이스</p>
+          </li>
+        </ul>
+      </section>
+      <button>댓글 보기</button>
+      <button>삭제</button>
+      <button>등록</button>
+    </main>
+    <div id="comment-user-menu" hidden>
+      <button type="button" id="openUserMemo">이용자 메모</button>
+    </div>
+    <section id="user-memo-popup" hidden>
+      <h2 id="memoTitle"></h2>
+    </section>
+    <script>
+      let selectedMemoUid = "";
+      document.addEventListener("click", (event) => {
+        const nickname = event.target.closest(".comment-nickname");
+        if (nickname) {
+          selectedMemoUid = nickname.dataset.memoUid || "";
+          document.querySelector("#comment-user-menu").hidden = false;
+          return;
+        }
+        if (event.target.id === "openUserMemo") {
+          document.querySelector("#memoTitle").textContent = `${selectedMemoUid} 메모`;
+          document.querySelector("#user-memo-popup").hidden = false;
+        }
+      });
+    </script>
+  </body>
+</html>

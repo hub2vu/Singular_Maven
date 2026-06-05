@@ -97,6 +97,16 @@
     return first(".nickname, .name, .user_name, .gall_writer, .writer_nikcon, [data-uid], [data-user-id]", node);
   }
 
+  function commentIdentityText(commentNode) {
+    const identity = getAuthorFromElement(commentNode) || {};
+    const pieces = [
+      identity.name ? `author:${identity.name}` : "",
+      identity.uid ? `uid:${identity.uid}` : "",
+      identity.ip ? `ip:${identity.ip}` : ""
+    ].filter(Boolean);
+    return pieces.join(" ");
+  }
+
   function getBodyRoot() {
     return first(".write_div") ||
       first(".writing_view_box") ||
@@ -314,6 +324,199 @@
     return uniqueImages([...bodyImages, ...getAttachmentImages()]);
   }
 
+  function mediaSourceCandidate(media) {
+    const rawSource = normalize(
+      media.getAttribute("data-src") ||
+      media.getAttribute("src") ||
+      media.currentSrc ||
+      media.src ||
+      media.querySelector?.("source")?.getAttribute("src") ||
+      media.querySelector?.("source")?.src ||
+      ""
+    );
+    if (!rawSource) return "";
+    try {
+      const resolved = new URL(rawSource, location.href);
+      if (resolved.href === location.href) return "";
+      return resolved.href;
+    } catch {
+      return rawSource;
+    }
+  }
+
+  function isLikelyCommentEmoticonMedia(media) {
+    if (!media) return false;
+    if (media.tagName === "IMG" && isLikelyAdImage(media)) return false;
+    if (media.closest(".gall_writer, .ub-writer, .writer_nikcon, .nickname, .user_info, .profile, .avatar")) {
+      return false;
+    }
+    if (media.classList.contains("written_dccon") || media.closest(".comment_dccon")) {
+      return Boolean(mediaSourceCandidate(media));
+    }
+    return media.tagName === "IMG" && Boolean(imageSourceCandidate(media));
+  }
+
+  function decodedFilenameFromUrl(value) {
+    try {
+      const url = new URL(value, location.href);
+      return normalize(decodeURIComponent(url.searchParams.get("f_no") || url.searchParams.get("name") || url.pathname.split("/").pop() || ""));
+    } catch {
+      return normalize(value.split(/[\\/]/u).pop() || "");
+    }
+  }
+
+  function dcconCodeFromUrl(value) {
+    const source = normalize(value);
+    if (!source) return "";
+    try {
+      const url = new URL(source, location.href);
+      return normalize(url.searchParams.get("no") || "");
+    } catch {
+      const match = source.match(/[?&]no=([^&#]+)/u);
+      return normalize(match?.[1] ? decodeURIComponent(match[1]) : "");
+    }
+  }
+
+  function cleanEmoticonNameCandidate(value) {
+    const normalized = normalize(value)
+      .replace(/^["']|["']$/gu, "")
+      .replace(/\.(png|jpe?g|gif|webp|bmp|avif)$/iu, "")
+      .trim();
+    if (!normalized) return "";
+    if (/^[0-9]+$/u.test(normalized)) return "";
+    if (/^(img|image|icon|dccon|dccon\.php|con|emoji|emoticon|sticker|file|download|viewimage|comment emoticon \d+)$/iu.test(normalized)) return "";
+    if (/^https?:\/\//iu.test(normalized)) return "";
+    return normalized.slice(0, 80);
+  }
+
+  function rawEmoticonTitle(media) {
+    return normalize(
+      media.getAttribute("conalt") ||
+      media.getAttribute("alt") ||
+      media.getAttribute("title") ||
+      media.getAttribute("aria-label") ||
+      ""
+    ).slice(0, 80);
+  }
+
+  function emoticonNameCandidates(media) {
+    const values = [
+      media.getAttribute("conalt"),
+      media.getAttribute("alt"),
+      media.getAttribute("title"),
+      media.getAttribute("aria-label"),
+      media.getAttribute("data-name"),
+      media.getAttribute("data-title"),
+      media.getAttribute("data-original-title"),
+      decodedFilenameFromUrl(mediaSourceCandidate(media))
+    ];
+    return Array.from(new Set(values.map(cleanEmoticonNameCandidate).filter(Boolean)));
+  }
+
+  function getCookie(name) {
+    const key = `${name}=`;
+    return document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(key))?.slice(key.length) || "";
+  }
+
+  async function fetchDcconPackageDetail(code) {
+    if (!code || !/^https?:$/u.test(location.protocol)) return undefined;
+    const body = new window.URLSearchParams({
+      ci_t: getCookie("ci_c"),
+      package_idx: "",
+      code
+    });
+    const response = await fetch(new URL("/dccon/package_detail", location.origin).toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      credentials: "same-origin",
+      body
+    });
+    if (!response.ok) return undefined;
+    const text = await response.text();
+    if (!text || text === "error") return undefined;
+    try {
+      return JSON.parse(text);
+    } catch {
+      return undefined;
+    }
+  }
+
+  function detectionWithPackageDetail(detection, packageDetail) {
+    const packageName = cleanEmoticonNameCandidate(packageDetail?.info?.title);
+    if (!packageName) return detection;
+    const names = Array.from(new Set([
+      packageName,
+      ...(detection.names || [])
+    ].map(cleanEmoticonNameCandidate).filter(Boolean)));
+    return {
+      ...detection,
+      names,
+      primaryName: packageName,
+      packageName,
+      packageIdx: normalize(packageDetail?.info?.package_idx || ""),
+      nearbyText: normalize(`${detection.nearbyText || ""} package:${packageName}`).slice(0, 700)
+    };
+  }
+
+  async function resolveCommentEmoticonPackageDetails(observation) {
+    const detections = observation?.metadata?.commentEmoticonDetections;
+    if (!Array.isArray(detections) || detections.length === 0) return observation;
+    const cache = new Map();
+    const resolved = await Promise.all(detections.map(async (detection) => {
+      if (!detection.dcconCode) return detection;
+      if (!cache.has(detection.dcconCode)) {
+        cache.set(detection.dcconCode, fetchDcconPackageDetail(detection.dcconCode).catch(() => undefined));
+      }
+      const packageDetail = await cache.get(detection.dcconCode);
+      return detectionWithPackageDetail(detection, packageDetail);
+    }));
+    return {
+      ...observation,
+      metadata: {
+        ...observation.metadata,
+        commentEmoticonDetections: resolved
+      }
+    };
+  }
+
+  function getCommentEmoticonDetections() {
+    const results = [];
+    getCommentNodes().forEach((node, commentIndex) => {
+      const textRoot = first(".usertxt, .comment_content, .txt, p", node) || node;
+      const commentText = textOf(textRoot) || textOf(node);
+      const identity = commentIdentityText(node);
+      all("img, video.written_dccon, .written_dccon", textRoot)
+        .filter(isLikelyCommentEmoticonMedia)
+        .forEach((media, imageIndex) => {
+          const source = mediaSourceCandidate(media);
+          const names = emoticonNameCandidates(media);
+          const fallbackName = `comment-emoticon-${commentIndex + 1}-${imageIndex + 1}`;
+          const iconTitle = rawEmoticonTitle(media);
+          const dcconCode = dcconCodeFromUrl(source);
+          results.push({
+            names,
+            primaryName: names[0] || fallbackName,
+            iconTitle,
+            dcconCode,
+            packageName: "",
+            packageIdx: "",
+            sourceHint: cleanEmoticonNameCandidate(decodedFilenameFromUrl(source)),
+            nearbyText: normalize([
+              `comment[${commentIndex + 1}]`,
+              identity,
+              commentText,
+              names.length ? `emoticon:${names.join(" / ")}` : "",
+              iconTitle && !names.includes(iconTitle) ? `icon-title:${iconTitle}` : ""
+            ].filter(Boolean).join(" ")).slice(0, 700)
+          });
+        });
+    });
+    return results;
+  }
+
   function getLinks(bodyRoot) {
     if (!bodyRoot) return [];
     return all("a[href]", bodyRoot).map((link) => ({
@@ -485,9 +688,14 @@
       metadata: {
         capturedAt: new Date().toISOString(),
         domSource: "dcinside-maven-content-script",
-        documentTitle: document.title
+        documentTitle: document.title,
+        commentEmoticonDetections: getCommentEmoticonDetections()
       }
     };
+  }
+
+  async function collectObservationAsync() {
+    return resolveCommentEmoticonPackageDetails(collectObservation());
   }
 
   function isDeniedLabel(label) {
@@ -533,7 +741,11 @@
   if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message?.type === "MAVEN_COLLECT_OBSERVATION") {
-        sendResponse({ ok: true, observation: collectObservation() });
+        collectObservationAsync().then((observation) => {
+          sendResponse({ ok: true, observation });
+        }).catch((error) => {
+          sendResponse({ ok: false, reason: String(error?.message || error), observation: collectObservation() });
+        });
         return true;
       }
       if (message?.type === "MAVEN_COLLECT_VISIBLE_LIST_POSTS") {
@@ -557,6 +769,7 @@
   }
 
   window.__dcMavenCollectObservationForTest = collectObservation;
+  window.__dcMavenCollectObservationForTestAsync = collectObservationAsync;
   window.__dcMavenCollectVisibleListPostsForTest = collectVisibleListPosts;
   window.__dcMavenResolveCommentUidsForTest = resolveCommentUids;
   window.__dcMavenSafeActionForTest = safeAction;

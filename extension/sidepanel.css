@@ -243,6 +243,46 @@ main {
   gap: 8px;
 }
 
+.forbidden-emoticons {
+  display: grid;
+  gap: 8px;
+}
+
+.forbidden-emoticon-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.forbidden-emoticon-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.forbidden-emoticon-item {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid #c7e7e2;
+  border-radius: 6px;
+  background: var(--chip);
+  color: #0f5f59;
+  padding: 4px 6px 4px 8px;
+  font-size: 12px;
+}
+
+.forbidden-emoticon-item span {
+  overflow-wrap: anywhere;
+}
+
+.forbidden-emoticon-item button {
+  padding: 2px 5px;
+  font-size: 11px;
+}
+
 .list-image-brief .collapsible-body:not([hidden]) {
   display: grid;
   gap: 8px;

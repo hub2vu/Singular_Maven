@@ -4,3 +4,4 @@ data/
 .env
 *.log
 ID_비밀번호.txt
+docs/goal_agent_runs/

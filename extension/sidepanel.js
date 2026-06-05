@@ -18,6 +18,8 @@
     "gpt-5.3-codex-spark",
     "gpt-5.2"
   ];
+  const DEFAULT_FORBIDDEN_EMOTICONS = ["갱생특갤콘"];
+  const FORBIDDEN_EMOTICONS_STORAGE_KEY = "mavenForbiddenEmoticons";
   const MODEL_LABELS = {
     "gpt-5.5": "GPT-5.5",
     "gpt-5.5-mini": "GPT-5.5-Mini",
@@ -32,6 +34,7 @@
   const modelSelect = document.querySelector("#modelSelect");
   const judgeButton = document.querySelector("#judgeButton");
   const commentJudgeButton = document.querySelector("#commentJudgeButton");
+  const emoticonJudgeButton = document.querySelector("#emoticonJudgeButton");
   const imageJudgeButton = document.querySelector("#imageJudgeButton");
   const startProxyButton = document.querySelector("#startProxyButton");
   const authStatus = document.querySelector("#authStatus");
@@ -48,6 +51,9 @@
   const listImageTitleInput = document.querySelector("#listImageTitleInput");
   const listImageBriefButton = document.querySelector("#listImageBriefButton");
   const listImageBriefResult = document.querySelector("#listImageBriefResult");
+  const forbiddenEmoticonForm = document.querySelector("#forbiddenEmoticonForm");
+  const forbiddenEmoticonInput = document.querySelector("#forbiddenEmoticonInput");
+  const forbiddenEmoticonList = document.querySelector("#forbiddenEmoticonList");
   const contextQuestionForm = document.querySelector("#contextQuestionForm");
   const contextQuestionInput = document.querySelector("#contextQuestionInput");
   const contextAskButton = document.querySelector("#contextAskButton");
@@ -79,6 +85,83 @@
   }
 
   populateModelSelect(DEFAULT_JUDGE_MODELS, localStorage.getItem("mavenJudgeModel") || DEFAULT_JUDGE_MODELS[0]);
+
+  function normalizeForbiddenEmoticonName(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function forbiddenEmoticonKey(value) {
+    return normalizeForbiddenEmoticonName(value).toLocaleLowerCase();
+  }
+
+  function loadForbiddenEmoticons() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(FORBIDDEN_EMOTICONS_STORAGE_KEY) || "null");
+      if (Array.isArray(saved)) {
+        return saved.map(normalizeForbiddenEmoticonName).filter(Boolean);
+      }
+    } catch {
+      // Fall through to defaults if localStorage contains invalid JSON.
+    }
+    return [...DEFAULT_FORBIDDEN_EMOTICONS];
+  }
+
+  function saveForbiddenEmoticons(names) {
+    localStorage.setItem(FORBIDDEN_EMOTICONS_STORAGE_KEY, JSON.stringify(names));
+  }
+
+  function currentForbiddenEmoticons() {
+    const seen = new Set();
+    const names = [];
+    for (const name of loadForbiddenEmoticons()) {
+      const normalized = normalizeForbiddenEmoticonName(name);
+      const key = forbiddenEmoticonKey(normalized);
+      if (!normalized || seen.has(key)) continue;
+      seen.add(key);
+      names.push(normalized);
+    }
+    return names;
+  }
+
+  function renderForbiddenEmoticons() {
+    const names = currentForbiddenEmoticons();
+    forbiddenEmoticonList.textContent = "";
+    for (const name of names) {
+      const item = document.createElement("div");
+      item.className = "forbidden-emoticon-item";
+      const label = document.createElement("span");
+      label.textContent = name;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.forbiddenEmoticonRemove = name;
+      button.textContent = "제거";
+      item.append(label, button);
+      forbiddenEmoticonList.appendChild(item);
+    }
+    for (const button of forbiddenEmoticonList.querySelectorAll("[data-forbidden-emoticon-remove]")) {
+      button.addEventListener("click", () => {
+        removeForbiddenEmoticon(button.dataset.forbiddenEmoticonRemove || "");
+      });
+    }
+  }
+
+  function addForbiddenEmoticon(name) {
+    const normalized = normalizeForbiddenEmoticonName(name);
+    if (!normalized) return;
+    const names = currentForbiddenEmoticons();
+    if (!names.some((item) => forbiddenEmoticonKey(item) === forbiddenEmoticonKey(normalized))) {
+      names.push(normalized);
+      saveForbiddenEmoticons(names);
+    }
+    renderForbiddenEmoticons();
+  }
+
+  function removeForbiddenEmoticon(name) {
+    const key = forbiddenEmoticonKey(name);
+    const names = currentForbiddenEmoticons().filter((item) => forbiddenEmoticonKey(item) !== key);
+    saveForbiddenEmoticons(names);
+    renderForbiddenEmoticons();
+  }
 
   function backendUrl(path) {
     return `${backendUrlInput.value.replace(/\/+$/, "")}${path}`;
@@ -519,6 +602,7 @@
   function setJudgmentBusy(activeButton, busyText) {
     judgeButton.disabled = true;
     commentJudgeButton.disabled = true;
+    emoticonJudgeButton.disabled = true;
     imageJudgeButton.disabled = true;
     activeButton.textContent = busyText;
   }
@@ -526,9 +610,11 @@
   function clearJudgmentBusy() {
     judgeButton.disabled = false;
     commentJudgeButton.disabled = false;
+    emoticonJudgeButton.disabled = false;
     imageJudgeButton.disabled = false;
     judgeButton.textContent = "이 페이지 LLM 판단";
     commentJudgeButton.textContent = "댓글 LLM 판단";
+    emoticonJudgeButton.textContent = "금지 이모티콘 탐지";
     imageJudgeButton.textContent = "이미지 LLM 판단";
   }
 
@@ -543,6 +629,7 @@
     listImageTitleInput.disabled = isBusy;
     judgeButton.disabled = isBusy;
     commentJudgeButton.disabled = isBusy;
+    emoticonJudgeButton.disabled = isBusy;
     imageJudgeButton.disabled = isBusy;
     listImageBriefButton.textContent = isBusy ? "브리핑 중" : "브리핑";
   }
@@ -584,6 +671,12 @@
     renderActions();
   }
 
+  function metadataWithoutCommentEmoticons(metadata = {}) {
+    const output = { ...(metadata || {}) };
+    delete output.commentEmoticonDetections;
+    return output;
+  }
+
   function pageOnlyObservation(observation) {
     return {
       ...observation,
@@ -592,7 +685,7 @@
       viewportText: observation.bodyText || "",
       clickableLabels: (observation.clickableLabels || []).filter((label) => !/댓글|comment/i.test(label)),
       metadata: {
-        ...(observation.metadata || {}),
+        ...metadataWithoutCommentEmoticons(observation.metadata),
         mavenJudgmentScope: "page-without-comments"
       }
     };
@@ -663,11 +756,130 @@
       clickableLabels: [],
       comments,
       metadata: {
-        ...(observation.metadata || {}),
+        ...metadataWithoutCommentEmoticons(observation.metadata),
         mavenJudgmentScope: "comments-only",
         commentAuthorGroups: authorGroups
       }
     };
+  }
+
+  function commentEmoticonDetectionsFromObservation(observation) {
+    const detections = observation?.metadata?.commentEmoticonDetections;
+    if (!Array.isArray(detections)) return [];
+    return detections
+      .map((item) => {
+        const names = Array.isArray(item?.names)
+          ? item.names.map((name) => String(name || "").trim()).filter(Boolean)
+          : [];
+        const primaryName = String(item?.primaryName || names[0] || "").trim();
+        return {
+          primaryName,
+          names: primaryName && !names.includes(primaryName) ? [primaryName, ...names] : names,
+          packageName: item?.packageName ? String(item.packageName) : "",
+          packageIdx: item?.packageIdx ? String(item.packageIdx) : "",
+          iconTitle: item?.iconTitle ? String(item.iconTitle) : "",
+          dcconCode: item?.dcconCode ? String(item.dcconCode) : "",
+          sourceHint: item?.sourceHint ? String(item.sourceHint) : "",
+          nearbyText: item?.nearbyText ? String(item.nearbyText) : ""
+        };
+      })
+      .filter((item) => item.primaryName || item.names.length || item.packageName || item.sourceHint);
+  }
+
+  function isNumericOnlyEmoticonName(value) {
+    return /^[0-9]+$/u.test(normalizeForbiddenEmoticonName(value));
+  }
+
+  function candidateNamesForForbiddenMatch(detection) {
+    return Array.from(new Set([
+      detection.packageName,
+      detection.primaryName,
+      ...(Array.isArray(detection.names) ? detection.names : [])
+    ].map(normalizeForbiddenEmoticonName).filter((name) => name && !isNumericOnlyEmoticonName(name))));
+  }
+
+  function findForbiddenEmoticonMatches(detections, forbiddenNames) {
+    const forbiddenByKey = new Map();
+    for (const name of forbiddenNames) {
+      const normalized = normalizeForbiddenEmoticonName(name);
+      if (normalized) forbiddenByKey.set(forbiddenEmoticonKey(normalized), normalized);
+    }
+    const matches = [];
+    detections.forEach((detection, index) => {
+      const candidates = candidateNamesForForbiddenMatch(detection);
+      const matchedForbiddenNames = Array.from(new Set(candidates
+        .map((candidate) => forbiddenByKey.get(forbiddenEmoticonKey(candidate)))
+        .filter(Boolean)));
+      if (!matchedForbiddenNames.length) return;
+      matches.push({
+        index: index + 1,
+        detection,
+        candidates,
+        forbiddenNames: matchedForbiddenNames,
+        evidence: detection.nearbyText || detection.primaryName || candidates.join(" / ")
+      });
+    });
+    return matches;
+  }
+
+  function summarizeForbiddenEmoticonMatches(matches) {
+    const byName = new Map();
+    for (const match of matches) {
+      for (const forbiddenName of match.forbiddenNames) {
+        const current = byName.get(forbiddenName) || {
+          name: forbiddenName,
+          count: 0,
+          occurrence_indices: [],
+          detected_names: new Set(),
+          evidence: []
+        };
+        current.count += 1;
+        current.occurrence_indices.push(match.index);
+        for (const candidate of match.candidates) current.detected_names.add(candidate);
+        current.evidence.push(match.evidence);
+        byName.set(forbiddenName, current);
+      }
+    }
+    return Array.from(byName.values()).map((item) => ({
+      name: item.name,
+      count: item.count,
+      occurrence_indices: item.occurrence_indices,
+      detected_names: Array.from(item.detected_names),
+      evidence: item.evidence.slice(0, 5)
+    }));
+  }
+
+  function renderForbiddenEmoticonResult(observation, detections, matches) {
+    const forbiddenNames = currentForbiddenEmoticons();
+    const groups = summarizeForbiddenEmoticonMatches(matches);
+    state.auditId = "";
+    cardPanel.hidden = false;
+    actionsPanel.hidden = true;
+    actionsPanel.innerHTML = "";
+    const title = matches.length ? "금지 이모티콘 발견" : "금지 이모티콘 없음";
+    const foundBlocks = groups.map((group) => `
+      <div class="quote">
+        <strong>${escapeHtml(group.name)}</strong><br />
+        count: ${escapeHtml(group.count)} | occurrence: ${escapeHtml(group.occurrence_indices.join(", "))}<br />
+        detected: ${escapeHtml(group.detected_names.join(" / ") || "-")}<br />
+        ${escapeHtml(group.evidence.join("\n"))}
+      </div>
+    `).join("");
+    const unresolved = detections
+      .filter((item) => !candidateNamesForForbiddenMatch(item).length)
+      .map((item, index) => `#${index + 1} ${item.iconTitle || item.sourceHint || item.dcconCode || "unknown"}`)
+      .slice(0, 8);
+    cardPanel.innerHTML = `
+      <h2 class="section-title">${escapeHtml(title)}</h2>
+      <p>
+        forbidden: ${escapeHtml(forbiddenNames.join(", ") || "-")}<br />
+        detected comment emoticons: ${escapeHtml(String(detections.length))}<br />
+        matched occurrences: ${escapeHtml(String(matches.length))}
+      </p>
+      ${foundBlocks || `<div class="quote">${escapeHtml("현재 금지 목록과 정확히 일치하는 댓글 이모티콘 이름이 없습니다.")}</div>`}
+      ${unresolved.length ? `<div class="quote"><strong>unresolved</strong><br />${escapeHtml(unresolved.join("\n"))}</div>` : ""}
+      <div class="quote"><strong>source</strong><br />${escapeHtml(observation.url || "-")}</div>
+    `;
   }
 
   function renderListImageBriefResult(result, observation, listPost) {
@@ -747,6 +959,25 @@
     }
   }
 
+  async function judgeCurrentCommentEmoticons() {
+    setError("");
+    storeRuntimeSettings();
+    setJudgmentBusy(emoticonJudgeButton, "이모티콘 탐지 중");
+    try {
+      const observation = await observeCurrentPage();
+      const detections = commentEmoticonDetectionsFromObservation(observation);
+      if (!detections.length) {
+        throw new Error("이 페이지 댓글에서 이름을 확인할 수 있는 이모티콘/콘/스티커를 찾지 못했습니다.");
+      }
+      const matches = findForbiddenEmoticonMatches(detections, currentForbiddenEmoticons());
+      renderForbiddenEmoticonResult(observation, detections, matches);
+    } catch (error) {
+      handleJudgeError(error);
+    } finally {
+      clearJudgmentBusy();
+    }
+  }
+
   async function judgeCurrentImages() {
     setError("");
     storeRuntimeSettings();
@@ -756,7 +987,10 @@
       if (!Array.isArray(observation.images) || observation.images.length === 0) {
         throw new Error("이 게시글 본문에서 작성자 업로드 이미지를 찾지 못했습니다.");
       }
-      const imageObservation = await inlineObservationImages(observation);
+      const imageObservation = await inlineObservationImages({
+        ...observation,
+        metadata: metadataWithoutCommentEmoticons(observation.metadata)
+      });
 
       const result = await fetchJson("/api/judge/images", {
         method: "POST",
@@ -870,8 +1104,14 @@
     localStorage.setItem("mavenJudgeModel", selectedModel());
     authStatus.textContent = `selected model 쨌 ${selectedModel()}`;
   });
+  forbiddenEmoticonForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    addForbiddenEmoticon(forbiddenEmoticonInput.value);
+    forbiddenEmoticonInput.value = "";
+  });
   judgeButton.addEventListener("click", judgeCurrentPage);
   commentJudgeButton.addEventListener("click", judgeCurrentComments);
+  emoticonJudgeButton.addEventListener("click", judgeCurrentCommentEmoticons);
   imageJudgeButton.addEventListener("click", judgeCurrentImages);
   listImageBriefToggle.addEventListener("click", () => {
     setListImageBriefCollapsed(!listImageBriefBody.hidden);
@@ -879,5 +1119,6 @@
   listImageBriefForm.addEventListener("submit", briefListPostImages);
   contextQuestionForm.addEventListener("submit", askContextQuestion);
   startProxyButton.addEventListener("click", ensureOpenAIOAuthProxy);
+  renderForbiddenEmoticons();
   refreshStatus();
 })();

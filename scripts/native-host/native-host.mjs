@@ -58,7 +58,7 @@ async function oauthProxyReady(port = openAIOAuthProxyPort()) {
 
 function startOpenAIOAuthProxy(port = openAIOAuthProxyPort()) {
   const logPath = path.join(dataDir, "openai-oauth.log");
-  const spec = openAIOAuthProxyLaunchSpec({ port, logPath });
+  const spec = openAIOAuthProxyLaunchSpec({ port, logPath, cwd: repoRoot });
   let logFd;
   try {
     const stdio = spec.stdio === "log-file"

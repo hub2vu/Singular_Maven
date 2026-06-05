@@ -15,6 +15,7 @@
       <div class="judge-actions">
         <button id="judgeButton" class="primary">이 페이지 LLM 판단</button>
         <button id="commentJudgeButton" type="button">댓글 LLM 판단</button>
+        <button id="emoticonJudgeButton" type="button">금지 이모티콘 탐지</button>
         <button id="imageJudgeButton" type="button">이미지 LLM 판단</button>
       </div>
     </header>
@@ -42,6 +43,14 @@
         <p id="oauthHelp">Uses local openai-oauth proxy. If login is needed, run npx @openai/codex login once.</p>
         <button id="startProxyButton" type="button">Start OAuth proxy</button>
         <p id="oauthProxyStatus"></p>
+      </section>
+      <section id="forbiddenEmoticonPanel" class="panel forbidden-emoticons">
+        <h2 class="section-title">금지 이모티콘</h2>
+        <form id="forbiddenEmoticonForm" class="forbidden-emoticon-form">
+          <input id="forbiddenEmoticonInput" type="text" placeholder="이모티콘 이름" autocomplete="off" />
+          <button id="forbiddenEmoticonAddButton" type="submit">추가</button>
+        </form>
+        <div id="forbiddenEmoticonList" class="forbidden-emoticon-list"></div>
       </section>
       <section id="listImageBriefPanel" class="panel list-image-brief">
         <div class="panel-heading">

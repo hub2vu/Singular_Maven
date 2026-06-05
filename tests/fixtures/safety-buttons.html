@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>Safety Fixture</title>
+  </head>
+  <body>
+    <button id="deleteBtn" onclick="window.clickedDelete = (window.clickedDelete || 0) + 1">삭제</button>
+    <button id="banBtn" onclick="window.clickedBan = (window.clickedBan || 0) + 1">차단</button>
+    <button id="commentSubmit" onclick="window.clickedComment = (window.clickedComment || 0) + 1">댓글등록</button>
+    <textarea id="reason"></textarea>
+    <a id="copyLink" href="#comments">댓글 보기</a>
+    <div id="comments">comments anchor</div>
+  </body>
+</html>

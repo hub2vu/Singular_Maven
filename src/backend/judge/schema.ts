@@ -215,7 +215,9 @@ export function policyEvidenceForPrompt(evidence: PolicyEvidence[]): Array<{
 export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePrompt {
   const redactedObservation = redactObservation(options.observation);
   const uploadedImageMode = options.mode === "uploaded-images";
-  const commentMode = redactedObservation.metadata?.mavenJudgmentScope === "comments-only";
+  const commentEmoticonNameMode = redactedObservation.metadata?.mavenJudgmentScope === "comment-emoticon-names-only";
+  const commentTextMode = redactedObservation.metadata?.mavenJudgmentScope === "comments-only";
+  const commentMode = commentTextMode || commentEmoticonNameMode;
   const imageMode = uploadedImageMode
     ? "uploaded post images only: attached images are from observation.images; ignore DCInside ads, banners, UI chrome, profile icons, recommendation widgets, and any full-page screenshot"
     : options.visionEnabled
@@ -245,13 +247,23 @@ export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePromp
     "- Compare current-page quotes against policy evidence source_post_no values side by side.",
     "- 완장고로시는 '완장/파딱/주딱/매니저' 단어 단독이 아니라 운영진 앵커 + 공격/해임/친목/권력남용 프레임 + 반복/여론몰이/저신뢰 정황을 함께 본다.",
     "- 닉언콘/친목 조항은 비활성화되었습니다. 단순 이모티콘, 콘, 스티커, 닉네임 언급만으로 삭제 후보나 차단 후보를 만들지 마세요.",
-    ...(commentMode ? [
+    "- 저격성 콘사용은 별도 기준입니다. 특정 유저를 겨냥한 조롱/공격 목적의 콘, 이모티콘, 스티커 사용이 같은 유저에게 반복되면 7~31일 차단 후보로 보고, 모르고 사용한 것처럼 보이거나 단발성/경미한 경우에는 1일 또는 6시간 차단 후보로 낮춰 제안하세요. 단순 콘/스티커만으로 적용하지 말고 사용자 반복성, 대상 특정성, 조롱/공격 맥락을 인용하세요.",
+    ...(commentTextMode ? [
       "- 댓글 판단 모드: CURRENT PAGE OBSERVATION.comments와 bodyText에 있는 댓글만 판단하고 본문/이미지 판단은 하지 않는다.",
       "- 싸움 여부를 fighting_likelihood low/medium/high로 평가한다. 직접 지목, 비난/조롱/명령조, 반박이 오가는 흐름, 감정적 에스컬레이션을 함께 본다.",
       "- 농담, 짧은 단발성 반박, 문맥상 장난인 표현은 싸움으로 과대판단하지 않는다.",
       "- 개별 댓글러별로 uid > ip+name > ip > name 순서의 user_key를 정하고 per_user에 comment_indices, role, risk_level, rationale, evidence_quotes를 적는다.",
       "- 같은 댓글러가 여러 댓글을 쓴 경우 합산 평가하되, 어떤 댓글 번호와 인용문 때문인지 반드시 남긴다.",
       "- 댓글 판단 모드에서는 comment_thread_assessment를 반드시 채운다."
+    ] : []),
+    ...(commentEmoticonNameMode ? [
+      "- 댓글 이모티콘 이름 탐지 모드: CURRENT PAGE OBSERVATION.bodyText의 DETECTED COMMENT EMOTICON NAMES와 COMMENT EMOTICON OCCURRENCES만으로 특정 이름의 이모티콘/콘/스티커 존재 여부를 판단한다.",
+      "- FORBIDDEN COMMENT EMOTICON NAMES는 사용자가 관리하는 금지 이모티콘 이름 목록이다. 기본 목록에는 '갱생특갤콘'이 포함될 수 있으며, 현재 observation에 제공된 목록만 기준으로 삼는다.",
+      "- detected name, aliases, sourceHint 중 하나가 금지 목록 이름과 정확히 일치하면 금지 이모티콘 발견으로 표시하고 current_page_evidence에 금지 이름, 탐지 이름, occurrence index, comment[index]를 남긴다.",
+      "- 이미지/비전 판단을 하지 말고, 추출된 name/aliases/sourceHint/nearbyText와 댓글 문맥만 사용한다.",
+      "- 금지 또는 제재 대상 이름이 발견되면 exact name, occurrence index, comment[index], 주변 댓글 문맥을 current_page_evidence에 남긴다.",
+      "- 단순히 콘이 있었다는 사실만으로 차단 후보를 만들지 말고, 금지된 이름인지 또는 저격성 콘사용 기준의 반복성/대상 특정성/조롱 맥락이 있는지 구분한다.",
+      "- 댓글 이모티콘 이름 탐지 모드에서는 comment_thread_assessment를 가능한 한 채운다."
     ] : []),
     ...(commentMode ? [
       "- 친목/네임드화 판단도 수행한다. clique_likelihood low/medium/high와 clique_summary를 채운다.",

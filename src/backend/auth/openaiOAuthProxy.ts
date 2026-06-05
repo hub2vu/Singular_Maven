@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess, type StdioOptions } from "node:child_process";
-import { closeSync, mkdirSync, openSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import path from "node:path";
 
 const DEFAULT_OAUTH_PORT = 10531;
@@ -83,13 +83,9 @@ function resolveNpx(platform = process.platform): string {
   return platform === "win32" ? "npx.cmd" : "npx";
 }
 
-function resolveNpxCliPath(nodePath = process.execPath, env: NodeJS.ProcessEnv = process.env): string {
-  const npmExecPath = env.npm_execpath;
-  if (npmExecPath && /[\\/]npx-cli\.js$/iu.test(npmExecPath)) return npmExecPath;
-  if (npmExecPath && /[\\/]npm-cli\.js$/iu.test(npmExecPath)) {
-    return npmExecPath.replace(/[\\/]npm-cli\.js$/iu, `${path.sep}npx-cli.js`);
-  }
-  return path.join(path.dirname(nodePath), "node_modules", "npm", "bin", "npx-cli.js");
+function resolveOpenAIOAuthCliPath(cwd = process.cwd()): string | undefined {
+  const candidate = path.join(cwd, "node_modules", "openai-oauth", "dist", "cli.js");
+  return existsSync(candidate) ? candidate : undefined;
 }
 
 function quotedForShell(value: string): string {
@@ -104,23 +100,29 @@ export function openAIOAuthProxyLaunchSpec({
   platform = process.platform,
   port = openAIOAuthPort(),
   logPath = defaultLogPath(process.cwd()),
+  cwd = process.cwd(),
   nodePath = process.execPath,
-  npxCliPath = resolveNpxCliPath(nodePath)
+  openaiOauthCliPath = resolveOpenAIOAuthCliPath(cwd)
 }: {
   platform?: NodeJS.Platform;
   port?: number;
   logPath?: string;
+  cwd?: string;
   nodePath?: string;
-  npxCliPath?: string;
+  openaiOauthCliPath?: string;
 } = {}): OpenAIOAuthProxyLaunchSpec {
-  if (platform === "win32") {
+  if (openaiOauthCliPath) {
     return {
       file: nodePath,
-      args: [npxCliPath, "-y", "openai-oauth", "--port", String(port)],
+      args: [openaiOauthCliPath, "--port", String(port)],
       windowsHide: true,
       stdio: "log-file",
       proxyCommand: openAIOAuthProxyCommand(port)
     };
+  }
+
+  if (platform === "win32") {
+    throw new Error(`openai-oauth local CLI was not found under ${cwd}. Run npm install before using OAuth proxy auto-start.`);
   }
 
   const command = `${resolveNpx(platform)} -y openai-oauth --port ${port} >> ${quotedForShell(logPath)} 2>&1`;
@@ -151,7 +153,7 @@ export function startOpenAIOAuthProxy(options: OpenAIOAuthProxyOptions = {}): Ch
   const logPath = options.logPath ?? defaultLogPath(cwd);
   mkdirSync(path.dirname(logPath), { recursive: true });
 
-  const spec = openAIOAuthProxyLaunchSpec({ port, logPath });
+  const spec = openAIOAuthProxyLaunchSpec({ port, logPath, cwd });
   let logFd: number | undefined;
   try {
     let stdio: StdioOptions;

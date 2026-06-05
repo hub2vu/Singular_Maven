@@ -12,8 +12,8 @@
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node", "vitest/globals"]
   },
-  "include": ["src/**/*.ts", "extension/**/*.js"],
+  "include": ["src/**/*.ts", "tests/**/*.ts", "extension/**/*.js", "playwright.config.ts", "eslint.config.js"],
   "exclude": ["dist", "node_modules", "data", "docs/goal_agent_runs"]
 }
