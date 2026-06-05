@@ -29,4 +29,15 @@ describe("native host hidden launcher", () => {
     expect(launcher).toContain("Console.OpenStandardInput()");
     expect(launcher).toContain("Console.OpenStandardOutput()");
   });
+
+  it("starts the backend without the tsx CLI spawning a visible child node console", () => {
+    const nativeHost = readRepoFile("scripts", "native-host", "native-host.mjs");
+
+    expect(nativeHost).not.toContain("tsx\", \"dist\", \"cli.mjs\"");
+    expect(nativeHost).not.toContain("tsx/dist/cli.mjs");
+    expect(nativeHost).toContain("tsx\", \"dist\", \"preflight.cjs\"");
+    expect(nativeHost).toContain("tsx\", \"dist\", \"loader.mjs\"");
+    expect(nativeHost).toContain("pathToFileURL");
+    expect(nativeHost).toContain("windowsHide: true");
+  });
 });

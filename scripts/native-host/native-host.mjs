@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { closeSync, mkdirSync, openSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { backendCompatibility } from "./backend-compatibility.mjs";
 import {
   openAIOAuthProxyBaseUrl,
@@ -30,8 +30,9 @@ function portFromBackendUrl(backendUrl) {
 }
 
 function startBackend(backendUrl) {
-  const tsxCli = path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs");
-  const child = spawn(process.execPath, [tsxCli, "src/backend/server.ts"], {
+  const tsxPreflight = path.join(repoRoot, "node_modules", "tsx", "dist", "preflight.cjs");
+  const tsxLoader = pathToFileURL(path.join(repoRoot, "node_modules", "tsx", "dist", "loader.mjs")).href;
+  const child = spawn(process.execPath, ["--require", tsxPreflight, "--import", tsxLoader, "src/backend/server.ts"], {
     cwd: repoRoot,
     detached: true,
     windowsHide: true,
