@@ -100,7 +100,7 @@ button.primary:hover {
   grid-auto-rows: min-content;
   align-items: start;
   gap: 6px 8px;
-  flex: 1 1 320px;
+  flex: 1 1 auto;
   min-width: min(100%, 320px);
 }
 

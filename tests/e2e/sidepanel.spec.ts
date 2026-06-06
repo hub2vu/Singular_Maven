@@ -143,6 +143,31 @@ test("side panel lays out top action buttons two per row", async ({ page }) => {
   expect(layout.firstHeight ?? 0).toBeLessThanOrEqual(24);
 });
 
+test("side panel does not leave empty space below top action buttons on narrow width", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.addInitScript(({ status }) => {
+    window.fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/api/auth/openai/status")) {
+        return new Response(JSON.stringify(status), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    };
+  }, { status: proxyStatus(true) });
+
+  await page.goto(pathToFileURL(path.join(repoRoot, "extension/sidepanel.html")).toString());
+
+  const gap = await page.evaluate(() => {
+    const topbar = document.querySelector(".topbar")?.getBoundingClientRect();
+    const buttons = Array.from(document.querySelectorAll(".judge-actions button"))
+      .map((button) => button.getBoundingClientRect());
+    const lastBottom = Math.max(...buttons.map((rect) => rect.bottom));
+    return (topbar?.bottom ?? 0) - lastBottom;
+  });
+
+  expect(gap).toBeLessThanOrEqual(16);
+});
+
 test("side panel lets every section collapse and expand", async ({ page }) => {
   await page.addInitScript(({ observation, judgment, status }) => {
     window.__DC_MAVEN_TEST__ = {
