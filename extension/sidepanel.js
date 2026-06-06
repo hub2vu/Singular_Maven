@@ -335,6 +335,10 @@
             <strong>${escapeHtml((profile.aliases || [])[0] || profile.key)}</strong>
             <div class="meta">${escapeHtml(profile.key)}</div>
             <div class="meta">uid ${escapeHtml((profile.uids || []).join(", ") || "-")} | ip ${escapeHtml((profile.ips || []).join(", ") || "-")} | seen ${escapeHtml(profile.observationCount || 0)}</div>
+            <div class="member-note-row">
+              <textarea data-member-risk-note-key="${escapeHtml(profile.key)}" rows="2" aria-label="Member note for ${escapeHtml(profile.key)}" placeholder="local note">${escapeHtml(profile.riskNote || "")}</textarea>
+              <button type="button" data-member-risk-note-save-key="${escapeHtml(profile.key)}">Save note</button>
+            </div>
           </div>
           <select data-member-risk-key="${escapeHtml(profile.key)}" aria-label="Member risk for ${escapeHtml(profile.key)}">
             ${riskOptions(profile.riskLevel || "low")}
@@ -343,7 +347,10 @@
       `).join("")}
     `;
     for (const select of memberPanel.querySelectorAll("[data-member-risk-key]")) {
-      select.addEventListener("change", () => updateMemberRisk(select.dataset.memberRiskKey, select.value));
+      select.addEventListener("change", () => updateMemberRisk(select.dataset.memberRiskKey, select.value, memberNoteValue(select.dataset.memberRiskKey)));
+    }
+    for (const button of memberPanel.querySelectorAll("[data-member-risk-note-save-key]")) {
+      button.addEventListener("click", () => saveMemberNote(button.dataset.memberRiskNoteSaveKey));
     }
   }
 
@@ -356,14 +363,37 @@
     renderMembers(result.profiles || []);
   }
 
-  async function updateMemberRisk(key, riskLevel) {
+  function memberControlForKey(attribute, key) {
+    return Array.from(memberPanel.querySelectorAll(`[${attribute}]`))
+      .find((element) => element.dataset.memberRiskKey === key ||
+        element.dataset.memberRiskNoteKey === key ||
+        element.dataset.memberRiskNoteSaveKey === key);
+  }
+
+  function memberRiskLevelValue(key) {
+    const select = memberControlForKey("data-member-risk-key", key);
+    return select?.value || "low";
+  }
+
+  function memberNoteValue(key) {
+    const note = memberControlForKey("data-member-risk-note-key", key);
+    return note?.value || "";
+  }
+
+  async function updateMemberRisk(key, riskLevel, note = memberNoteValue(key)) {
     if (!key) return;
     await fetchJson("/api/members/risk", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, riskLevel })
+      body: JSON.stringify({ key, riskLevel, note })
     });
     authStatus.textContent = `member risk saved | ${riskLevel}`;
+  }
+
+  async function saveMemberNote(key) {
+    if (!key) return;
+    await updateMemberRisk(key, memberRiskLevelValue(key), memberNoteValue(key));
+    authStatus.textContent = "member note saved";
   }
 
   function renderRules(rules = []) {

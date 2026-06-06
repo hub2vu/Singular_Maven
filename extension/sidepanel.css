@@ -223,6 +223,25 @@ main {
   overflow-wrap: anywhere;
 }
 
+.member-note-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 80px;
+  gap: 6px;
+  align-items: stretch;
+  margin-top: 8px;
+}
+
+.member-note-row textarea {
+  min-height: 38px;
+  max-height: 80px;
+}
+
+.member-note-row button {
+  min-height: 38px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

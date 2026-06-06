@@ -17,6 +17,11 @@ declare global {
     judgeRequestBody?: any;
     memberObserveRequestBody?: any;
     memberRiskRequestBody?: any;
+    memberRiskObserveTabCalls?: number;
+    memberRiskObserveRequestBody?: any;
+    memberRiskUnexpectedJudgeCalls?: number;
+    memberNoteRiskRequestBody?: any;
+    memberNoteUnexpectedLlmCalls?: number;
   }
 }
 

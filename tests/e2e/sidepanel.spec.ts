@@ -772,6 +772,72 @@ test("side panel refreshes local member risk without running an LLM judgment", a
   expect(observedGalleryId).toBe("thesingularity");
 });
 
+test("side panel saves local member notes without running an LLM judgment", async ({ page }) => {
+  await page.addInitScript(({ observation, status }) => {
+    window.__DC_MAVEN_TEST__ = {
+      sendMessage: async (message) => {
+        if (message.type === "MAVEN_OBSERVE_ACTIVE_TAB") {
+          return { ok: true, observation };
+        }
+        return { ok: true };
+      }
+    };
+    window.fetch = async (input, options) => {
+      const url = String(input);
+      if (url.includes("/api/auth/openai/status")) {
+        return new Response(JSON.stringify(status), { status: 200 });
+      }
+      if (url.includes("/health")) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      if (url.includes("/api/capabilities")) {
+        return new Response(JSON.stringify({ features: ["members.observe", "openai-oauth-proxy", "judge.model-select"] }), { status: 200 });
+      }
+      if (url.includes("/api/members/observe")) {
+        return new Response(JSON.stringify({
+          profiles: [{
+            key: "uid:note-user",
+            riskLevel: "watch",
+            riskNote: "prior moderator context",
+            aliases: ["note-user"],
+            uids: ["note-user"],
+            ips: [],
+            observationCount: 2,
+            postCount: 1,
+            commentCount: 1
+          }]
+        }), { status: 200 });
+      }
+      if (url.includes("/api/members/risk")) {
+        window.memberNoteRiskRequestBody = JSON.parse(String(options?.body || "{}"));
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      if (url.includes("/api/judge") || url.includes("/api/chat/context") || url.includes("openai-oauth")) {
+        window.memberNoteUnexpectedLlmCalls = (window.memberNoteUnexpectedLlmCalls || 0) + 1;
+        return new Response(JSON.stringify({ error: "LLM should not be called" }), { status: 500 });
+      }
+      return new Response("{}", { status: 200 });
+    };
+  }, { observation: observationFixture(), status: proxyStatus(false) });
+
+  await page.goto(pathToFileURL(path.join(repoRoot, "extension/sidepanel.html")).toString());
+  await page.locator("#memberRiskButton").click();
+
+  const noteInput = page.locator("[data-member-risk-note-key='uid:note-user']");
+  await expect(noteInput).toHaveValue("prior moderator context");
+  await noteInput.fill("repeat baiting near blocklist");
+  await page.locator("[data-member-risk-note-save-key='uid:note-user']").click();
+
+  const riskBody = await page.evaluate(() => window.memberNoteRiskRequestBody);
+  const llmCalls = await page.evaluate(() => window.memberNoteUnexpectedLlmCalls || 0);
+  expect(riskBody).toMatchObject({
+    key: "uid:note-user",
+    riskLevel: "watch",
+    note: "repeat baiting near blocklist"
+  });
+  expect(llmCalls).toBe(0);
+});
+
 test("side panel explains backend fetch failures instead of showing raw Failed to fetch", async ({ page }) => {
   await page.addInitScript(() => {
     window.__DC_MAVEN_TEST__ = {
