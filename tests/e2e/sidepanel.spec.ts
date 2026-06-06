@@ -129,6 +129,7 @@ test("side panel lays out top action buttons two per row", async ({ page }) => {
       firstTop: first?.top,
       secondTop: second?.top,
       thirdTop: third?.top,
+      firstHeight: first?.height,
       firstLeft: first?.left,
       secondLeft: second?.left,
       columnCount: columns.length
@@ -139,6 +140,7 @@ test("side panel lays out top action buttons two per row", async ({ page }) => {
   expect(Math.abs((layout.firstTop ?? 0) - (layout.secondTop ?? 0))).toBeLessThan(2);
   expect((layout.secondLeft ?? 0)).toBeGreaterThan(layout.firstLeft ?? 0);
   expect((layout.thirdTop ?? 0)).toBeGreaterThan((layout.firstTop ?? 0) + 10);
+  expect(layout.firstHeight ?? 0).toBeLessThanOrEqual(32);
 });
 
 test("side panel lets every section collapse and expand", async ({ page }) => {

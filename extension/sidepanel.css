@@ -104,6 +104,9 @@ button.primary:hover {
 
 .judge-actions button {
   width: 100%;
+  padding: 5px 8px;
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 main {
