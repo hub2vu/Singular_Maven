@@ -1,7 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { readFile } from "node:fs/promises";
 import type { PolicyCorpus, PolicyDocument, PolicyLink, PolicyRule, PolicyRuleKind } from "../../shared/types.js";
-import { detectModGoro } from "./modGoro.js";
+import { detectModGoro } from "./retrieval.js";
 
 interface RawComment {
   author?: string;
@@ -377,11 +376,6 @@ export async function ingestPolicyCorpus(options: IngestPolicyCorpusOptions): Pr
       documents: raw.documents
     });
 
-    if (options.outDir) {
-      await mkdir(options.outDir, { recursive: true });
-      await writeFile(path.join(options.outDir, "policy-index.json"), JSON.stringify(corpus, null, 2), "utf8");
-    }
-
     return corpus;
   }
 
@@ -399,11 +393,6 @@ export async function ingestPolicyCorpus(options: IngestPolicyCorpusOptions): Pr
     generatedAt: new Date().toISOString(),
     documents: [...postDocuments, ...seedDocuments]
   });
-
-  if (options.outDir) {
-    await mkdir(options.outDir, { recursive: true });
-    await writeFile(path.join(options.outDir, "policy-index.json"), JSON.stringify(corpus, null, 2), "utf8");
-  }
 
   return corpus;
 }

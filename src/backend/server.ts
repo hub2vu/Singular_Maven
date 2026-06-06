@@ -363,7 +363,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   async function ensureCorpus(): Promise<PolicyCorpus> {
     if (corpus) return corpus;
     const discovered = await discoverPolicyPath({ cwd: process.cwd(), requestedPath: options.policyPath ?? process.env.POLICY_JSON_PATH ?? process.env.POLICY_REPORT_PATH });
-    corpus = await ingestPolicyCorpus({ sourcePath: discovered.path, outDir: dataDir });
+    corpus = await ingestPolicyCorpus({ sourcePath: discovered.path });
     return corpus;
   }
 

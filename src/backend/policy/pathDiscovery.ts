@@ -25,6 +25,10 @@ function extractDate(filePath: string): string | undefined {
   return filePath.match(/\d{4}-\d{2}-\d{2}/u)?.[0];
 }
 
+function isGeneratedPolicyIndex(filePath: string): boolean {
+  return path.basename(filePath).toLowerCase() === "policy-index.json";
+}
+
 async function findJsonCorpus(dir: string, dateHint?: string): Promise<string | undefined> {
   const entries = await readdir(dir);
   const candidates = entries
@@ -43,7 +47,7 @@ export async function discoverPolicyPath(options: DiscoverPolicyPathOptions): Pr
   const requested = options.requestedPath ? path.resolve(options.requestedPath) : undefined;
   const cwd = path.resolve(options.cwd);
 
-  if (requested && /\.json$/iu.test(requested) && (await exists(requested))) {
+  if (requested && !isGeneratedPolicyIndex(requested) && /\.json$/iu.test(requested) && (await exists(requested))) {
     return { path: requested, kind: "json", reason: "requested JSON corpus exists" };
   }
 
@@ -56,7 +60,7 @@ export async function discoverPolicyPath(options: DiscoverPolicyPathOptions): Pr
   }
 
   const envPath = process.env.POLICY_JSON_PATH ? path.resolve(process.env.POLICY_JSON_PATH) : undefined;
-  if (envPath && /\.json$/iu.test(envPath) && (await exists(envPath))) {
+  if (envPath && !isGeneratedPolicyIndex(envPath) && /\.json$/iu.test(envPath) && (await exists(envPath))) {
     return { path: envPath, kind: "json", reason: "POLICY_JSON_PATH" };
   }
 

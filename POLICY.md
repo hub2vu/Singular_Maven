@@ -6,7 +6,7 @@ Canonical local corpus:
 
 `C:\Users\hub2v\Desktop\Sing2\dcinside_manager_posts_thesingularity_2026-06-02.json`
 
-The ingester reads post number, title, body, comments, image URLs, and links. It writes a local JSON index under `data/policy-index.json`. The Markdown report is not the canonical ingest source because the file is mojibaked in this workspace.
+The ingester reads post number, title, body, comments, image URLs, and links directly from the canonical JSON corpus. It does not write or use `data/policy-index.json` as a judgment source. The Markdown report is not the canonical ingest source because the file is mojibaked in this workspace.
 
 Sensitive files such as `ID_비밀번호.txt` are excluded and must never be read, indexed, logged, or sent to an LLM.
 

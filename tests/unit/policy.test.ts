@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,11 +20,31 @@ describe("policy corpus", () => {
     expect(discovered.path).not.toContain("ID_");
   });
 
-  it("ingests posts, comments, image URLs, links, and source post numbers", async () => {
+  it("does not accept a generated policy index as the policy path", async () => {
+    const tmp = await mkdtemp(path.join(tmpdir(), "maven-policy-discovery-"));
+    try {
+      const sourcePath = path.join(tmp, "dcinside_manager_posts_test_2026-06-06.json");
+      const dataDir = path.join(tmp, "data");
+      const indexPath = path.join(dataDir, "policy-index.json");
+      await mkdir(dataDir, { recursive: true });
+      await writeFile(sourcePath, "{}", "utf8");
+      await writeFile(indexPath, "{}", "utf8");
+
+      const discovered = await discoverPolicyPath({ cwd: tmp, requestedPath: indexPath });
+
+      expect(discovered.path).toBe(sourcePath);
+      expect(discovered.path).not.toContain("policy-index.json");
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("ingests posts, comments, image URLs, links, and source post numbers without writing a policy index", async () => {
     const tmp = await mkdtemp(path.join(tmpdir(), "maven-policy-"));
     try {
       const corpus = await ingestPolicyCorpus({ sourcePath: jsonPath, outDir: tmp });
       const commandPost = corpus.documents.find((doc) => doc.source_post_no === "1226405");
+      const indexPath = path.join(tmp, "policy-index.json");
 
       expect(corpus.count).toBeGreaterThan(250);
       expect(commandPost?.title).toContain("특갤봇");
@@ -44,22 +64,7 @@ describe("policy corpus", () => {
       expect(corpus.rules?.flatMap((rule) => rule.tags)).not.toContain("오탐방지");
       expect(corpus.documents.some((doc) => doc.rule_id.includes("nickcon"))).toBe(false);
       expect(corpus.documents.flatMap((doc) => doc.tags)).not.toContain("닉언콘/친목");
-    } finally {
-      await rm(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it("re-ingests a generated policy index without collapsing to seed rules only", async () => {
-    const tmp = await mkdtemp(path.join(tmpdir(), "maven-policy-roundtrip-"));
-    try {
-      const first = await ingestPolicyCorpus({ sourcePath: jsonPath, outDir: tmp });
-      const indexPath = path.join(tmp, "policy-index.json");
-      const second = await ingestPolicyCorpus({ sourcePath: indexPath });
-
-      expect(JSON.parse(await readFile(indexPath, "utf8")).rules.length).toBe(first.documents.length);
-      expect(second.documents.length).toBe(first.documents.length);
-      expect(second.rules?.length).toBe(first.documents.length);
-      expect(second.documents.length).toBeGreaterThan(260);
+      await expect(access(indexPath)).rejects.toThrow();
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }
