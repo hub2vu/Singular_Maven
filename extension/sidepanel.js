@@ -335,15 +335,15 @@
             <strong>${escapeHtml((profile.aliases || [])[0] || profile.key)}</strong>
             <div class="meta">${escapeHtml(profile.key)}</div>
             <div class="meta">uid ${escapeHtml((profile.uids || []).join(", ") || "-")} | ip ${escapeHtml((profile.ips || []).join(", ") || "-")} | seen ${escapeHtml(profile.observationCount || 0)}</div>
-            <div class="member-note-row">
-              <textarea data-member-risk-note-key="${escapeHtml(profile.key)}" rows="2" aria-label="Member note for ${escapeHtml(profile.key)}" placeholder="local note">${escapeHtml(profile.riskNote || "")}</textarea>
-            </div>
           </div>
           <div class="member-risk-controls">
             <select data-member-risk-key="${escapeHtml(profile.key)}" aria-label="Member risk for ${escapeHtml(profile.key)}">
               ${riskOptions(profile.riskLevel || "low")}
             </select>
             <button type="button" data-member-risk-note-save-key="${escapeHtml(profile.key)}">save</button>
+          </div>
+          <div class="member-note-row">
+            <textarea data-member-risk-note-key="${escapeHtml(profile.key)}" rows="2" aria-label="Member note for ${escapeHtml(profile.key)}" placeholder="local note">${escapeHtml(profile.riskNote || "")}</textarea>
           </div>
         </div>
       `).join("")}

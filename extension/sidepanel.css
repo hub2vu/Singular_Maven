@@ -225,7 +225,7 @@ main {
 
 .member-note-row {
   display: grid;
-  margin-top: 8px;
+  grid-column: 1 / -1;
 }
 
 .member-note-row textarea {
