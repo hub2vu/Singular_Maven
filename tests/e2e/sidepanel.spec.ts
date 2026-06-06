@@ -106,6 +106,41 @@ test("side panel places forbidden emoticons and Backend controls at the bottom",
   expect(order).toEqual({ forbiddenAfterContext: true, backendAfterForbidden: true });
 });
 
+test("side panel lays out top action buttons two per row", async ({ page }) => {
+  await page.setViewportSize({ width: 520, height: 800 });
+  await page.addInitScript(({ status }) => {
+    window.fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/api/auth/openai/status")) {
+        return new Response(JSON.stringify(status), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    };
+  }, { status: proxyStatus(true) });
+
+  await page.goto(pathToFileURL(path.join(repoRoot, "extension/sidepanel.html")).toString());
+
+  const layout = await page.evaluate(() => {
+    const first = document.querySelector("#judgeButton")?.getBoundingClientRect();
+    const second = document.querySelector("#commentJudgeButton")?.getBoundingClientRect();
+    const third = document.querySelector("#memberRiskButton")?.getBoundingClientRect();
+    const columns = getComputedStyle(document.querySelector(".judge-actions")).gridTemplateColumns.split(" ").filter(Boolean);
+    return {
+      firstTop: first?.top,
+      secondTop: second?.top,
+      thirdTop: third?.top,
+      firstLeft: first?.left,
+      secondLeft: second?.left,
+      columnCount: columns.length
+    };
+  });
+
+  expect(layout.columnCount).toBe(2);
+  expect(Math.abs((layout.firstTop ?? 0) - (layout.secondTop ?? 0))).toBeLessThan(2);
+  expect((layout.secondLeft ?? 0)).toBeGreaterThan(layout.firstLeft ?? 0);
+  expect((layout.thirdTop ?? 0)).toBeGreaterThan((layout.firstTop ?? 0) + 10);
+});
+
 test("side panel lets every section collapse and expand", async ({ page }) => {
   await page.addInitScript(({ observation, judgment, status }) => {
     window.__DC_MAVEN_TEST__ = {
