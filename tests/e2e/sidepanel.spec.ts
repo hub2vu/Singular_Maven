@@ -825,7 +825,8 @@ test("side panel saves local member notes without running an LLM judgment", asyn
   await page.locator("#memberRiskButton").click();
 
   const noteInput = page.locator("[data-member-risk-note-key='uid:note-user']");
-  await expect(page.locator("[data-member-risk-note-save-key='uid:note-user']")).toHaveText("save");
+  await expect(page.locator(".member-risk-controls [data-member-risk-note-save-key='uid:note-user']")).toHaveText("save");
+  await expect(page.locator(".member-note-row [data-member-risk-note-save-key='uid:note-user']")).toHaveCount(0);
   await expect(noteInput).toHaveValue("prior moderator context");
   await noteInput.fill("repeat baiting near blocklist");
   await page.locator("[data-member-risk-note-save-key='uid:note-user']").click();

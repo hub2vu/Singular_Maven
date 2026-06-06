@@ -205,9 +205,9 @@ main {
 
 .member-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 96px;
+  grid-template-columns: minmax(0, 1fr) minmax(104px, 144px);
   gap: 8px;
-  align-items: center;
+  align-items: start;
   border-top: 1px solid var(--line);
   padding-top: 8px;
   margin-top: 8px;
@@ -225,19 +225,22 @@ main {
 
 .member-note-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 54px;
-  gap: 6px;
-  align-items: stretch;
   margin-top: 8px;
 }
 
 .member-note-row textarea {
-  min-height: 38px;
+  min-height: 66px;
   max-height: 80px;
 }
 
-.member-note-row button {
-  min-height: 38px;
+.member-risk-controls {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.member-risk-controls button {
+  min-height: 44px;
   padding: 6px 8px;
   font-size: 12px;
 }
