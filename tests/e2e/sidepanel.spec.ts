@@ -713,6 +713,65 @@ test("side panel displays local member risk and saves manual risk changes", asyn
   expect(riskBody).toMatchObject({ key: "uid:fixture123", riskLevel: "high" });
 });
 
+test("side panel refreshes local member risk without running an LLM judgment", async ({ page }) => {
+  await page.addInitScript(({ observation, status }) => {
+    window.__DC_MAVEN_TEST__ = {
+      sendMessage: async (message) => {
+        if (message.type === "MAVEN_OBSERVE_ACTIVE_TAB") {
+          window.memberRiskObserveTabCalls = (window.memberRiskObserveTabCalls || 0) + 1;
+          return { ok: true, observation };
+        }
+        return { ok: true };
+      }
+    };
+    window.fetch = async (input, options) => {
+      const url = String(input);
+      if (url.includes("/api/auth/openai/status")) {
+        return new Response(JSON.stringify(status), { status: 200 });
+      }
+      if (url.includes("/health")) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      if (url.includes("/api/capabilities")) {
+        return new Response(JSON.stringify({ features: ["members.observe", "openai-oauth-proxy", "judge.model-select"] }), { status: 200 });
+      }
+      if (url.includes("/api/members/observe")) {
+        window.memberRiskObserveRequestBody = JSON.parse(String(options?.body || "{}"));
+        return new Response(JSON.stringify({
+          profiles: [{
+            key: "uid:local-only",
+            riskLevel: "watch",
+            aliases: ["local-only-user"],
+            uids: ["local-only"],
+            ips: [],
+            observationCount: 1,
+            postCount: 1,
+            commentCount: 0
+          }]
+        }), { status: 200 });
+      }
+      if (url.includes("/api/judge")) {
+        window.memberRiskUnexpectedJudgeCalls = (window.memberRiskUnexpectedJudgeCalls || 0) + 1;
+        return new Response(JSON.stringify({ error: "judge should not be called" }), { status: 500 });
+      }
+      return new Response("{}", { status: 200 });
+    };
+  }, { observation: observationFixture(), status: proxyStatus(false) });
+
+  await page.goto(pathToFileURL(path.join(repoRoot, "extension/sidepanel.html")).toString());
+  await page.locator("#memberRiskButton").click();
+
+  await expect(page.locator("#memberPanel")).toContainText("local-only-user");
+  await expect(page.locator("#memberPanel")).toContainText("uid:local-only");
+  const observeCalls = await page.evaluate(() => window.memberRiskObserveTabCalls || 0);
+  const judgeCalls = await page.evaluate(() => window.memberRiskUnexpectedJudgeCalls || 0);
+  const observedGalleryId = await page.evaluate(() => window.memberRiskObserveRequestBody?.observation?.galleryId);
+
+  expect(observeCalls).toBe(1);
+  expect(judgeCalls).toBe(0);
+  expect(observedGalleryId).toBe("thesingularity");
+});
+
 test("side panel explains backend fetch failures instead of showing raw Failed to fetch", async ({ page }) => {
   await page.addInitScript(() => {
     window.__DC_MAVEN_TEST__ = {

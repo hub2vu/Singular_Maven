@@ -34,6 +34,7 @@
   const modelSelect = document.querySelector("#modelSelect");
   const judgeButton = document.querySelector("#judgeButton");
   const commentJudgeButton = document.querySelector("#commentJudgeButton");
+  const memberRiskButton = document.querySelector("#memberRiskButton");
   const emoticonJudgeButton = document.querySelector("#emoticonJudgeButton");
   const imageJudgeButton = document.querySelector("#imageJudgeButton");
   const startProxyButton = document.querySelector("#startProxyButton");
@@ -602,6 +603,7 @@
   function setJudgmentBusy(activeButton, busyText) {
     judgeButton.disabled = true;
     commentJudgeButton.disabled = true;
+    memberRiskButton.disabled = true;
     emoticonJudgeButton.disabled = true;
     imageJudgeButton.disabled = true;
     activeButton.textContent = busyText;
@@ -610,10 +612,12 @@
   function clearJudgmentBusy() {
     judgeButton.disabled = false;
     commentJudgeButton.disabled = false;
+    memberRiskButton.disabled = false;
     emoticonJudgeButton.disabled = false;
     imageJudgeButton.disabled = false;
     judgeButton.textContent = "이 페이지 LLM 판단";
     commentJudgeButton.textContent = "댓글 LLM 판단";
+    memberRiskButton.textContent = "멤버 리스크 보기";
     emoticonJudgeButton.textContent = "금지 이모티콘 탐지";
     imageJudgeButton.textContent = "이미지 LLM 판단";
   }
@@ -629,6 +633,7 @@
     listImageTitleInput.disabled = isBusy;
     judgeButton.disabled = isBusy;
     commentJudgeButton.disabled = isBusy;
+    memberRiskButton.disabled = isBusy;
     emoticonJudgeButton.disabled = isBusy;
     imageJudgeButton.disabled = isBusy;
     listImageBriefButton.textContent = isBusy ? "브리핑 중" : "브리핑";
@@ -959,6 +964,20 @@
     }
   }
 
+  async function refreshLocalMemberRisk() {
+    setError("");
+    storeRuntimeSettings();
+    setJudgmentBusy(memberRiskButton, "리스크 갱신 중");
+    try {
+      await observeCurrentPage();
+      authStatus.textContent = "local member risk updated";
+    } catch (error) {
+      handleJudgeError(error);
+    } finally {
+      clearJudgmentBusy();
+    }
+  }
+
   async function judgeCurrentCommentEmoticons() {
     setError("");
     storeRuntimeSettings();
@@ -1111,6 +1130,7 @@
   });
   judgeButton.addEventListener("click", judgeCurrentPage);
   commentJudgeButton.addEventListener("click", judgeCurrentComments);
+  memberRiskButton.addEventListener("click", refreshLocalMemberRisk);
   emoticonJudgeButton.addEventListener("click", judgeCurrentCommentEmoticons);
   imageJudgeButton.addEventListener("click", judgeCurrentImages);
   listImageBriefToggle.addEventListener("click", () => {
