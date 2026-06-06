@@ -207,9 +207,10 @@ describe("openai-oauth local proxy integration", () => {
     });
   });
 
-  it("does not forward data image URLs to openai-oauth vision requests", async () => {
+  it("sends data URL vision judgment inputs through the responses endpoint", async () => {
     process.env.OPENAI_OAUTH_AUTO_START = "0";
 
+    let receivedPath = "";
     let receivedBody: any;
     await withHttpServer(async (req, res) => {
       if (req.url === "/v1/models") {
@@ -217,12 +218,57 @@ describe("openai-oauth local proxy integration", () => {
         res.end(JSON.stringify({ data: [{ id: "gpt-test" }] }));
         return;
       }
+      receivedPath = req.url || "";
       const chunks: Buffer[] = [];
       for await (const chunk of req) chunks.push(Buffer.from(chunk));
       receivedBody = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({
-        choices: [{ message: { content: validCardJson() } }]
+        output_text: validCardJson()
+      }));
+    }, async (baseUrl) => {
+      const provider = makeOpenAIJudgeProvider({ baseUrl });
+      await provider({
+        prompt: { system: "system prompt", user: "judge uploaded images only" },
+        model: "gpt-test",
+        evidence: [],
+        imageUrls: ["data:image/png;base64,SU5MSU5FX0lNQUdFX0JZVEVT"],
+        screenshotDataUrl: "data:image/png;base64,SCREENSHOT_SHOULD_BE_IGNORED",
+        visionEnabled: true
+      });
+
+      expect(receivedPath).toBe("/v1/responses");
+      expect(receivedBody.model).toBe("gpt-test");
+      expect(receivedBody.instructions).toBe("system prompt");
+      expect(receivedBody.input).toEqual([{
+        role: "user",
+        content: [
+          { type: "input_text", text: "judge uploaded images only" },
+          { type: "input_image", image_url: "data:image/png;base64,SU5MSU5FX0lNQUdFX0JZVEVT" }
+        ]
+      }]);
+      expect(JSON.stringify(receivedBody)).not.toContain("SCREENSHOT_SHOULD_BE_IGNORED");
+    });
+  });
+
+  it("routes mixed data and HTTP vision inputs through the responses endpoint", async () => {
+    process.env.OPENAI_OAUTH_AUTO_START = "0";
+
+    let receivedPath = "";
+    let receivedBody: any;
+    await withHttpServer(async (req, res) => {
+      if (req.url === "/v1/models") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ data: [{ id: "gpt-test" }] }));
+        return;
+      }
+      receivedPath = req.url || "";
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      receivedBody = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        output_text: validCardJson()
       }));
     }, async (baseUrl) => {
       const provider = makeOpenAIJudgeProvider({ baseUrl });
@@ -231,19 +277,19 @@ describe("openai-oauth local proxy integration", () => {
         model: "gpt-test",
         evidence: [],
         imageUrls: [
-          "data:image/png;base64,INLINE_IMAGE_SHOULD_NOT_BE_SENT",
+          "data:image/png;base64,TUlYRUQtSU1BR0U=",
           "https://dcimg.example/uploaded-risk.png"
         ],
         visionEnabled: true
       });
 
-      const userContent = receivedBody.messages[1].content;
+      expect(receivedPath).toBe("/v1/responses");
+      const userContent = receivedBody.input[0].content;
       expect(userContent).toEqual([
-        { type: "text", text: "judge uploaded images only" },
-        { type: "image_url", image_url: { url: "https://dcimg.example/uploaded-risk.png" } }
+        { type: "input_text", text: "judge uploaded images only" },
+        { type: "input_image", image_url: "data:image/png;base64,TUlYRUQtSU1BR0U=" },
+        { type: "input_image", image_url: "https://dcimg.example/uploaded-risk.png" }
       ]);
-      expect(JSON.stringify(userContent)).not.toContain("data:image");
-      expect(JSON.stringify(userContent)).not.toContain("INLINE_IMAGE_SHOULD_NOT_BE_SENT");
     });
   });
 

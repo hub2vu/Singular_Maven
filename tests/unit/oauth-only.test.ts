@@ -208,7 +208,7 @@ describe("OpenAI OAuth-only auth", () => {
           src: "https://dcimg.example/uploaded-risk.png",
           alt: "업로드 이미지",
           nearbyText: "본문 주변 문맥",
-          dataUrl: "data:image/png;base64,INLINE_IMAGE_BYTES"
+          dataUrl: "data:image/png;base64,SU5MSU5FX0lNQUdFX0JZVEVT"
         }
       ]
     };
@@ -232,11 +232,11 @@ describe("OpenAI OAuth-only auth", () => {
       expect(response.statusCode).toBe(200);
       expect(body.imageCount).toBe(1);
       expect(audit.attachedImageUrls).toEqual(["https://dcimg.example/uploaded-risk.png"]);
-      expect(audit.attachedImageInputKinds).toEqual(["url"]);
+      expect(audit.attachedImageInputKinds).toEqual(["data-url"]);
       expect(audit.llmInput.user).toContain("uploaded post images only");
       expect(audit.llmInput.user).toContain("https://dcimg.example/uploaded-risk.png");
       expect(audit.llmInput.user).not.toContain("https://ads.example/banner.png");
-      expect(JSON.stringify(audit)).not.toContain("INLINE_IMAGE_BYTES");
+      expect(JSON.stringify(audit)).not.toContain("SU5MSU5FX0lNQUdFX0JZVEVT");
       expect(audit).not.toHaveProperty("screenshotPath");
       expect(JSON.stringify(audit)).not.toContain("SCREENSHOT_SHOULD_NOT_BE_USED");
     } finally {
@@ -290,7 +290,7 @@ describe("OpenAI OAuth-only auth", () => {
       expect(requestedUrl).toBe(attachmentUrl);
       expect(requestedReferer).toBe(observation.url);
       expect(audit.attachedImageUrls).toEqual([attachmentUrl]);
-      expect(audit.attachedImageInputKinds).toEqual(["url"]);
+      expect(audit.attachedImageInputKinds).toEqual(["data-url"]);
       expect(JSON.stringify(audit)).not.toContain("EXTENSION_INLINE_BYTES_SHOULD_NOT_BE_USED");
     } finally {
       await server.close();
@@ -334,7 +334,7 @@ describe("OpenAI OAuth-only auth", () => {
       expect(response.statusCode).toBe(200);
       expect(body.imageCount).toBe(1);
       expect(audit.attachedImageUrls).toEqual([imageUrl]);
-      expect(audit.attachedImageInputKinds).toEqual(["url"]);
+      expect(audit.attachedImageInputKinds).toEqual(["data-url"]);
     } finally {
       await server.close();
       await rm(tmp, { recursive: true, force: true });
@@ -350,7 +350,7 @@ describe("OpenAI OAuth-only auth", () => {
         src: "https://dcimg.example/list-brief.png",
         alt: "list brief image",
         nearbyText: "original attachment",
-        dataUrl: "data:image/png;base64,LIST_BRIEF_IMAGE_BYTES"
+        dataUrl: "data:image/png;base64,TElTVF9CUklFRl9JTUFHRV9CWVRFUw=="
       }]
     };
 

@@ -59,14 +59,22 @@ function extractOutputText(response: any): string {
   throw new Error("openai-oauth response did not include text output");
 }
 
-function isOpenAIOAuthVisionUrl(value: string): boolean {
+function isHttpImageUrl(value: string): boolean {
   return /^https?:\/\//iu.test(value);
+}
+
+function isDataImageUrl(value: string): boolean {
+  return /^data:image\/[a-z0-9.+-]+;base64,/iu.test(value);
+}
+
+function isVisionImageUrl(value: string): boolean {
+  return isHttpImageUrl(value) || isDataImageUrl(value);
 }
 
 function buildUserContent(prompt: JudgePrompt, options: { screenshotDataUrl?: string; imageUrls?: string[]; visionEnabled: boolean }): any {
   if (!options.visionEnabled) return prompt.user;
-  const imageUrls = (options.imageUrls ?? []).filter(isOpenAIOAuthVisionUrl);
-  const fallbackScreenshot = imageUrls.length || !options.screenshotDataUrl || !isOpenAIOAuthVisionUrl(options.screenshotDataUrl)
+  const imageUrls = (options.imageUrls ?? []).filter(isHttpImageUrl);
+  const fallbackScreenshot = imageUrls.length || !options.screenshotDataUrl || !isHttpImageUrl(options.screenshotDataUrl)
     ? undefined
     : options.screenshotDataUrl;
   const attachments = [...imageUrls, ...(fallbackScreenshot ? [fallbackScreenshot] : [])];
@@ -77,6 +85,23 @@ function buildUserContent(prompt: JudgePrompt, options: { screenshotDataUrl?: st
   ];
 }
 
+function responsesVisionAttachments(options: { screenshotDataUrl?: string; imageUrls?: string[]; visionEnabled: boolean }): string[] {
+  if (!options.visionEnabled) return [];
+  const imageUrls = (options.imageUrls ?? []).filter(isVisionImageUrl);
+  if (imageUrls.length) return imageUrls;
+  return options.screenshotDataUrl && isVisionImageUrl(options.screenshotDataUrl) ? [options.screenshotDataUrl] : [];
+}
+
+function buildResponsesInput(prompt: JudgePrompt, attachments: string[]): any[] {
+  return [{
+    role: "user",
+    content: [
+      { type: "input_text", text: prompt.user },
+      ...attachments.map((url) => ({ type: "input_image", image_url: url }))
+    ]
+  }];
+}
+
 export function makeOpenAIJudgeProvider(options: OpenAIJudgeProviderOptions = {}): LlmProvider {
   return async ({ prompt, model, screenshotDataUrl, imageUrls, visionEnabled }) => {
     const status = await ensureOpenAIOAuthProxy({
@@ -84,6 +109,30 @@ export function makeOpenAIJudgeProvider(options: OpenAIJudgeProviderOptions = {}
       port: options.port,
       autoStart: options.autoStartProxy
     });
+
+    const responsesAttachments = responsesVisionAttachments({ screenshotDataUrl, imageUrls, visionEnabled });
+    if (responsesAttachments.some(isDataImageUrl)) {
+      const response = await fetch(`${status.baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: options.model ?? model,
+          instructions: prompt.system,
+          input: buildResponsesInput(prompt, responsesAttachments),
+          temperature: 0.2
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`openai-oauth request failed ${response.status}: ${errorText.slice(0, 500)}`);
+      }
+
+      const json = await response.json();
+      return validateJudgeCard(extractOutputText(json));
+    }
 
     const response = await fetch(`${status.baseUrl}/v1/chat/completions`, {
       method: "POST",
@@ -151,6 +200,35 @@ export function makeOpenAIImageBriefProvider(options: OpenAIJudgeProviderOptions
       port: options.port,
       autoStart: options.autoStartProxy
     });
+
+    const responsesAttachments = responsesVisionAttachments({ imageUrls, visionEnabled: true });
+    if (responsesAttachments.some(isDataImageUrl)) {
+      const response = await fetch(`${status.baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: options.model ?? model,
+          instructions: system,
+          input: [
+            ...history.map((item) => ({
+              role: item.role,
+              content: [{ type: "input_text", text: item.content }]
+            })),
+            ...buildResponsesInput({ system, user }, responsesAttachments)
+          ],
+          temperature: 0.2
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`openai-oauth request failed ${response.status}: ${errorText.slice(0, 500)}`);
+      }
+
+      return extractOutputText(await response.json());
+    }
 
     const messages = [
       { role: "system", content: system },

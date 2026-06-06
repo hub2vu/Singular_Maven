@@ -211,6 +211,18 @@ function shouldRedownloadImage(image: ObservationImage): boolean {
   }
 }
 
+function usableImageDataUrl(dataUrl?: string): string | undefined {
+  const trimmed = dataUrl?.trim();
+  if (!trimmed) return undefined;
+  const match = trimmed.match(/^data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=\s]+)$/iu);
+  if (!match) return undefined;
+  const base64 = match[2].replace(/\s+/gu, "");
+  if (!base64) return undefined;
+  const bytes = Buffer.from(base64, "base64");
+  if (!bytes.length) return undefined;
+  return `data:${match[1].toLowerCase()};base64,${base64}`;
+}
+
 async function downloadImageAsDataUrl(image: ObservationImage, pageUrl?: string): Promise<string> {
   if (!/^https?:\/\//iu.test(image.src)) {
     throw new Error("image source is not downloadable");
@@ -245,10 +257,9 @@ async function loadUploadedImageInputs(images: ObservationImage[], pageUrl?: str
       if (!/^https?:\/\//iu.test(image.src)) {
         throw new Error("openai-oauth vision requires an http or https image URL");
       }
-      if (shouldRedownloadImage(image)) {
-        await downloadImageAsDataUrl(image, pageUrl);
-      }
-      loaded.push({ image, input: image.src, kind: "url" });
+      const inlineDataUrl = shouldRedownloadImage(image) ? undefined : usableImageDataUrl(image.dataUrl);
+      const input = inlineDataUrl ?? await downloadImageAsDataUrl(image, pageUrl);
+      loaded.push({ image, input, kind: "data-url" });
     } catch (error) {
       failures.push({ src: image.src, reason: String(error instanceof Error ? error.message : error) });
     }
