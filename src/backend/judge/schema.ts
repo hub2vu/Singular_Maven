@@ -254,6 +254,7 @@ export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePromp
       "- 농담, 짧은 단발성 반박, 문맥상 장난인 표현은 싸움으로 과대판단하지 않는다.",
       "- 개별 댓글러별로 uid > ip+name > ip > name 순서의 user_key를 정하고 per_user에 comment_indices, role, risk_level, rationale, evidence_quotes를 적는다.",
       "- 같은 댓글러가 여러 댓글을 쓴 경우 합산 평가하되, 어떤 댓글 번호와 인용문 때문인지 반드시 남긴다.",
+      "- If bodyText contains LOCAL MEMBER CONTEXT, use only those high-risk or noted local profiles as supporting context for the matching comment users. Never use absent local member state, low/watch-without-note state, or local member context alone as standalone moderation evidence.",
       "- 댓글 판단 모드에서는 comment_thread_assessment를 반드시 채운다."
     ] : []),
     ...(commentEmoticonNameMode ? [

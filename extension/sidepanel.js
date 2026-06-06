@@ -6,6 +6,7 @@
     screenshotDataUrl: null,
     card: null,
     auditId: null,
+    memberProfiles: [],
     contextMessages: []
   };
 
@@ -442,7 +443,8 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ observation })
     });
-    renderMembers(result.profiles || []);
+    state.memberProfiles = Array.isArray(result.profiles) ? result.profiles : [];
+    renderMembers(state.memberProfiles);
   }
 
   function memberControlForKey(attribute, key) {
@@ -851,9 +853,46 @@
     return Array.from(groups.values());
   }
 
+  function normalizedLocalMemberNote(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function localMemberProfileMap() {
+    const profiles = Array.isArray(state.memberProfiles) ? state.memberProfiles : [];
+    const byKey = new Map();
+    for (const profile of profiles) {
+      const key = String(profile?.key || "");
+      if (key) byKey.set(key.toLocaleLowerCase(), profile);
+    }
+    return byKey;
+  }
+
+  function commentLocalMemberContext(authorGroups = []) {
+    const profilesByKey = localMemberProfileMap();
+    return authorGroups
+      .map((group) => {
+        const profile = profilesByKey.get(String(group.user_key || "").toLocaleLowerCase());
+        if (!profile) return null;
+        const riskLevel = String(profile.riskLevel || "low");
+        const riskNote = normalizedLocalMemberNote(profile.riskNote);
+        if (riskLevel !== "high" && !riskNote) return null;
+        return {
+          user_key: group.user_key,
+          display_name: group.display_name || (profile.aliases || [])[0] || "",
+          uid: group.uid || (profile.uids || [])[0] || "",
+          ip: group.ip || (profile.ips || [])[0] || "",
+          comment_indices: Array.isArray(group.comment_indices) ? group.comment_indices : [],
+          riskLevel,
+          riskNote
+        };
+      })
+      .filter(Boolean);
+  }
+
   function commentOnlyObservation(observation) {
     const comments = Array.isArray(observation.comments) ? observation.comments : [];
     const authorGroups = commentAuthorGroups(comments);
+    const localMemberContext = commentLocalMemberContext(authorGroups);
     const commentText = commentTextForPrompt(comments);
     const bodyText = [
       "COMMENT JUDGMENT MODE",
@@ -861,6 +900,9 @@
       "",
       "COMMENT AUTHOR GROUPS:",
       JSON.stringify(authorGroups),
+      "",
+      "LOCAL MEMBER CONTEXT (HIGH OR NOTE ONLY):",
+      JSON.stringify(localMemberContext),
       "",
       "COMMENTS:",
       commentText
@@ -879,7 +921,8 @@
       metadata: {
         ...metadataWithoutCommentEmoticons(observation.metadata),
         mavenJudgmentScope: "comments-only",
-        commentAuthorGroups: authorGroups
+        commentAuthorGroups: authorGroups,
+        commentLocalMemberContext: localMemberContext
       }
     };
   }

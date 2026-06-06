@@ -577,6 +577,103 @@ test("side panel separates page, comment, comment-emoticon, and uploaded-image j
   }]);
 });
 
+test("comment judgment sends only high or noted local member context", async ({ page }) => {
+  const observation = {
+    ...observationFixture(),
+    author: { name: "post-author", uid: "post123", ip: "118.235", raw: "post-author post123 118.235" },
+    comments: [
+      {
+        id: "c-high",
+        author: "high-user",
+        authorIdentity: { name: "high-user", uid: "high123", raw: "high-user high123" },
+        text: "high context comment",
+        depth: 0
+      },
+      {
+        id: "c-note",
+        author: "note-user",
+        authorIdentity: { name: "note-user", uid: "note123", raw: "note-user note123" },
+        text: "noted context comment",
+        depth: 0
+      },
+      {
+        id: "c-low",
+        author: "low-user",
+        authorIdentity: { name: "low-user", uid: "low123", raw: "low-user low123" },
+        text: "ordinary low context comment",
+        depth: 0
+      }
+    ]
+  };
+  const profiles = [
+    { key: "uid:post123", riskLevel: "high", aliases: ["post-author"], uids: ["post123"], ips: ["118.235"], observationCount: 3 },
+    { key: "uid:high123", riskLevel: "high", aliases: ["high-user"], uids: ["high123"], ips: [], observationCount: 4 },
+    { key: "uid:note123", riskLevel: "low", riskNote: "prior moderator note", aliases: ["note-user"], uids: ["note123"], ips: [], observationCount: 2 },
+    { key: "uid:low123", riskLevel: "low", aliases: ["low-user"], uids: ["low123"], ips: [], observationCount: 1 }
+  ];
+
+  await page.addInitScript(({ observation, profiles, judgment, status }) => {
+    window.__DC_MAVEN_TEST__ = {
+      sendMessage: async (message) => message.type === "MAVEN_OBSERVE_ACTIVE_TAB"
+        ? { ok: true, observation }
+        : { ok: true }
+    };
+    window.fetch = async (input, options) => {
+      const url = String(input);
+      if (url.includes("/api/auth/openai/status")) {
+        return new Response(JSON.stringify(status), { status: 200 });
+      }
+      if (url.includes("/api/capabilities")) {
+        return new Response(JSON.stringify({ features: ["members.observe", "openai-oauth-proxy", "judge.model-select"] }), { status: 200 });
+      }
+      if (url.includes("/api/members/observe")) {
+        return new Response(JSON.stringify({ profiles, refs: [] }), { status: 200 });
+      }
+      if (url.includes("/api/judge")) {
+        window.commentJudgeRequestBody = JSON.parse(String(options?.body || "{}"));
+        return new Response(JSON.stringify({ auditId: "audit-comment-member-context", card: judgment }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    };
+  }, {
+    observation,
+    profiles,
+    judgment: judgmentFixture("Comment member context judgment"),
+    status: proxyStatus(true)
+  });
+
+  await page.goto(pathToFileURL(path.join(repoRoot, "extension/sidepanel.html")).toString());
+  await page.locator("#commentJudgeButton").click();
+  await expect(page.getByText("Comment member context judgment")).toBeVisible();
+
+  const commentBody = await page.evaluate(() => window.commentJudgeRequestBody);
+  const localContext = commentBody.observation.metadata.commentLocalMemberContext;
+  expect(localContext).toEqual([
+    {
+      user_key: "uid:high123",
+      display_name: "high-user",
+      uid: "high123",
+      ip: "",
+      comment_indices: [1],
+      riskLevel: "high",
+      riskNote: ""
+    },
+    {
+      user_key: "uid:note123",
+      display_name: "note-user",
+      uid: "note123",
+      ip: "",
+      comment_indices: [2],
+      riskLevel: "low",
+      riskNote: "prior moderator note"
+    }
+  ]);
+  expect(JSON.stringify(localContext)).not.toContain("uid:low123");
+  expect(JSON.stringify(localContext)).not.toContain("uid:post123");
+  expect(commentBody.observation.bodyText).toContain("LOCAL MEMBER CONTEXT (HIGH OR NOTE ONLY)");
+  expect(commentBody.observation.bodyText).toContain("prior moderator note");
+});
+
 test("side panel falls back to backend image loading when extension inlining fails", async ({ page }) => {
   await page.addInitScript(({ observation, imageJudgment, status }) => {
     window.__DC_MAVEN_TEST__ = {

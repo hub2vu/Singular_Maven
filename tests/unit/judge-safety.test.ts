@@ -138,6 +138,9 @@ describe("judge schema, prompt, audit, and safety", () => {
     expect(prompt.user).toContain("clique_likelihood");
     expect(prompt.user).toContain("nickname_mention_policy_risk");
     expect(prompt.user).toContain("nickname_mention_only");
+    expect(prompt.user).toContain("LOCAL MEMBER CONTEXT");
+    expect(prompt.user).toContain("low/watch-without-note");
+    expect(prompt.user).toContain("standalone moderation evidence");
   });
 
   it("adds text-only requirements for comment emoticon name detection prompts", () => {
