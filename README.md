@@ -1,6 +1,6 @@
 # Sing_Maven Copilot
 
-Read-only Chrome Extension + local Fastify backend for LLM-first moderation review of DCInside `특이점이 온다` gallery pages.
+Read-only Chrome Extension + local Fastify backend for LLM-first moderation review of `특이점이 온다` gallery pages.
 
 The extension observes the page the human is already viewing, sends a redacted DOM/screenshot observation to the local backend, retrieves policy evidence from the local manager-post corpus, and asks an OpenAI-compatible LLM for a strict judgment card. It never clicks delete, ban, submit, post, comment, confirm, save, or apply.
 
