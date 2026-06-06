@@ -59,10 +59,16 @@ function extractOutputText(response: any): string {
   throw new Error("openai-oauth response did not include text output");
 }
 
+function isOpenAIOAuthVisionUrl(value: string): boolean {
+  return /^https?:\/\//iu.test(value);
+}
+
 function buildUserContent(prompt: JudgePrompt, options: { screenshotDataUrl?: string; imageUrls?: string[]; visionEnabled: boolean }): any {
   if (!options.visionEnabled) return prompt.user;
-  const imageUrls = (options.imageUrls ?? []).filter(Boolean);
-  const fallbackScreenshot = imageUrls.length ? undefined : options.screenshotDataUrl;
+  const imageUrls = (options.imageUrls ?? []).filter(isOpenAIOAuthVisionUrl);
+  const fallbackScreenshot = imageUrls.length || !options.screenshotDataUrl || !isOpenAIOAuthVisionUrl(options.screenshotDataUrl)
+    ? undefined
+    : options.screenshotDataUrl;
   const attachments = [...imageUrls, ...(fallbackScreenshot ? [fallbackScreenshot] : [])];
   if (!attachments.length) return prompt.user;
   return [

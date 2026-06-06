@@ -232,7 +232,7 @@ describe("OpenAI OAuth-only auth", () => {
       expect(response.statusCode).toBe(200);
       expect(body.imageCount).toBe(1);
       expect(audit.attachedImageUrls).toEqual(["https://dcimg.example/uploaded-risk.png"]);
-      expect(audit.attachedImageInputKinds).toEqual(["data-url"]);
+      expect(audit.attachedImageInputKinds).toEqual(["url"]);
       expect(audit.llmInput.user).toContain("uploaded post images only");
       expect(audit.llmInput.user).toContain("https://dcimg.example/uploaded-risk.png");
       expect(audit.llmInput.user).not.toContain("https://ads.example/banner.png");
@@ -290,7 +290,7 @@ describe("OpenAI OAuth-only auth", () => {
       expect(requestedUrl).toBe(attachmentUrl);
       expect(requestedReferer).toBe(observation.url);
       expect(audit.attachedImageUrls).toEqual([attachmentUrl]);
-      expect(audit.attachedImageInputKinds).toEqual(["data-url"]);
+      expect(audit.attachedImageInputKinds).toEqual(["url"]);
       expect(JSON.stringify(audit)).not.toContain("EXTENSION_INLINE_BYTES_SHOULD_NOT_BE_USED");
     } finally {
       await server.close();
@@ -334,7 +334,7 @@ describe("OpenAI OAuth-only auth", () => {
       expect(response.statusCode).toBe(200);
       expect(body.imageCount).toBe(1);
       expect(audit.attachedImageUrls).toEqual([imageUrl]);
-      expect(audit.attachedImageInputKinds).toEqual(["data-url"]);
+      expect(audit.attachedImageInputKinds).toEqual(["url"]);
     } finally {
       await server.close();
       await rm(tmp, { recursive: true, force: true });

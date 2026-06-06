@@ -131,6 +131,7 @@ const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
 interface LoadedImageInput {
   image: ObservationImage;
   input: string;
+  kind: "url" | "data-url";
 }
 
 interface ImageLoadFailure {
@@ -139,12 +140,7 @@ interface ImageLoadFailure {
 }
 
 function isUsableImageUrl(src: string): boolean {
-  return /^https?:\/\//iu.test(src) || /^data:image\//iu.test(src);
-}
-
-function isNonEmptyImageDataUrl(value?: string): boolean {
-  const match = String(value ?? "").match(/^data:image\/[a-z0-9.+-]+;base64,(.*)$/isu);
-  return Boolean(match && match[1].trim().length > 0);
+  return /^https?:\/\//iu.test(src);
 }
 
 function imageMimeFromSource(src: string, fallbackType?: string | null): string | undefined {
@@ -246,17 +242,13 @@ async function loadUploadedImageInputs(images: ObservationImage[], pageUrl?: str
   const failures: ImageLoadFailure[] = [];
   for (const image of images) {
     try {
-      if (shouldRedownloadImage(image)) {
-        loaded.push({ image, input: await downloadImageAsDataUrl(image, pageUrl) });
-      } else if (isNonEmptyImageDataUrl(image.dataUrl)) {
-        loaded.push({ image, input: image.dataUrl as string });
-      } else if (isNonEmptyImageDataUrl(image.src)) {
-        loaded.push({ image, input: image.src });
-      } else if (/^https?:\/\//iu.test(image.src)) {
-        loaded.push({ image, input: await downloadImageAsDataUrl(image, pageUrl) });
-      } else {
-        throw new Error("image source did not include downloadable URL or non-empty data URL");
+      if (!/^https?:\/\//iu.test(image.src)) {
+        throw new Error("openai-oauth vision requires an http or https image URL");
       }
+      if (shouldRedownloadImage(image)) {
+        await downloadImageAsDataUrl(image, pageUrl);
+      }
+      loaded.push({ image, input: image.src, kind: "url" });
     } catch (error) {
       failures.push({ src: image.src, reason: String(error instanceof Error ? error.message : error) });
     }
@@ -494,7 +486,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       observation: imageObservation,
       imageUrls: imageInputs.loaded.map((item) => item.input),
       imageSourceUrls: loadedImages.map((image) => image.src),
-      imageInputKinds: imageInputs.loaded.map(() => "data-url"),
+      imageInputKinds: imageInputs.loaded.map((item) => item.kind),
       evidence,
       dataDir,
       model: resolveJudgeModel(body.model ?? process.env.OPENAI_MODEL),

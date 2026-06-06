@@ -207,6 +207,46 @@ describe("openai-oauth local proxy integration", () => {
     });
   });
 
+  it("does not forward data image URLs to openai-oauth vision requests", async () => {
+    process.env.OPENAI_OAUTH_AUTO_START = "0";
+
+    let receivedBody: any;
+    await withHttpServer(async (req, res) => {
+      if (req.url === "/v1/models") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ data: [{ id: "gpt-test" }] }));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      receivedBody = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        choices: [{ message: { content: validCardJson() } }]
+      }));
+    }, async (baseUrl) => {
+      const provider = makeOpenAIJudgeProvider({ baseUrl });
+      await provider({
+        prompt: { system: "system prompt", user: "judge uploaded images only" },
+        model: "gpt-test",
+        evidence: [],
+        imageUrls: [
+          "data:image/png;base64,INLINE_IMAGE_SHOULD_NOT_BE_SENT",
+          "https://dcimg.example/uploaded-risk.png"
+        ],
+        visionEnabled: true
+      });
+
+      const userContent = receivedBody.messages[1].content;
+      expect(userContent).toEqual([
+        { type: "text", text: "judge uploaded images only" },
+        { type: "image_url", image_url: { url: "https://dcimg.example/uploaded-risk.png" } }
+      ]);
+      expect(JSON.stringify(userContent)).not.toContain("data:image");
+      expect(JSON.stringify(userContent)).not.toContain("INLINE_IMAGE_SHOULD_NOT_BE_SENT");
+    });
+  });
+
   it("sends contextual follow-up questions to the local oauth proxy as text chat", async () => {
     process.env.OPENAI_OAUTH_AUTO_START = "0";
 
