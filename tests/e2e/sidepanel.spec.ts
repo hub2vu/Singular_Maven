@@ -77,6 +77,35 @@ function proxyStatus(configured = true) {
   };
 }
 
+test("side panel places forbidden emoticons and Backend controls at the bottom", async ({ page }) => {
+  await page.addInitScript(({ status }) => {
+    window.fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/api/auth/openai/status")) {
+        return new Response(JSON.stringify(status), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    };
+  }, { status: proxyStatus(true) });
+
+  await page.goto(pathToFileURL(path.join(repoRoot, "extension/sidepanel.html")).toString());
+
+  const order = await page.evaluate(() => {
+    const contextPanel = document.querySelector("#contextChatPanel");
+    const forbiddenPanel = document.querySelector("#forbiddenEmoticonPanel");
+    const backendRow = document.querySelector("#backendUrl")?.closest(".backend-row");
+    if (!contextPanel || !forbiddenPanel || !backendRow) {
+      return { forbiddenAfterContext: false, backendAfterForbidden: false };
+    }
+    return {
+      forbiddenAfterContext: Boolean(contextPanel.compareDocumentPosition(forbiddenPanel) & Node.DOCUMENT_POSITION_FOLLOWING),
+      backendAfterForbidden: Boolean(forbiddenPanel.compareDocumentPosition(backendRow) & Node.DOCUMENT_POSITION_FOLLOWING)
+    };
+  });
+
+  expect(order).toEqual({ forbiddenAfterContext: true, backendAfterForbidden: true });
+});
+
 test("side panel shows a judgment card with current-page and policy evidence", async ({ page }) => {
   await page.addInitScript(({ observation, judgment, status }) => {
     window.__DC_MAVEN_TEST__ = {
