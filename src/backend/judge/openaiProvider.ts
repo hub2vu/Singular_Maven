@@ -59,6 +59,56 @@ function extractOutputText(response: any): string {
   throw new Error("openai-oauth response did not include text output");
 }
 
+function extractResponsesStreamText(streamText: string): string {
+  const deltas: string[] = [];
+  const completedTexts: string[] = [];
+  for (const block of streamText.split(/\r?\n\r?\n/u)) {
+    const dataLines = block
+      .split(/\r?\n/u)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart());
+    if (!dataLines.length) continue;
+    const data = dataLines.join("\n");
+    if (!data || data === "[DONE]") continue;
+    let event: any;
+    try {
+      event = JSON.parse(data);
+    } catch {
+      continue;
+    }
+    if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
+      deltas.push(event.delta);
+      continue;
+    }
+    if (event.type === "response.output_text.done" && typeof event.text === "string") {
+      completedTexts.push(event.text);
+      continue;
+    }
+    const partText = event.part?.type === "output_text" && typeof event.part.text === "string" ? event.part.text : "";
+    if (event.type === "response.content_part.done" && partText) {
+      completedTexts.push(partText);
+      continue;
+    }
+    const itemContent = Array.isArray(event.item?.content) ? event.item.content : [];
+    for (const content of itemContent) {
+      if (content?.type === "output_text" && typeof content.text === "string" && content.text) {
+        completedTexts.push(content.text);
+      }
+    }
+  }
+  const text = deltas.length ? deltas.join("") : completedTexts.join("\n");
+  if (text) return text;
+  throw new Error("openai-oauth streamed response did not include text output");
+}
+
+async function extractProviderResponseText(response: Response): Promise<string> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("text/event-stream")) {
+    return extractResponsesStreamText(await response.text());
+  }
+  return extractOutputText(await response.json());
+}
+
 function isHttpImageUrl(value: string): boolean {
   return /^https?:\/\//iu.test(value);
 }
@@ -121,7 +171,7 @@ export function makeOpenAIJudgeProvider(options: OpenAIJudgeProviderOptions = {}
           model: options.model ?? model,
           instructions: prompt.system,
           input: buildResponsesInput(prompt, responsesAttachments),
-          temperature: 0.2
+          stream: true
         })
       });
 
@@ -130,8 +180,7 @@ export function makeOpenAIJudgeProvider(options: OpenAIJudgeProviderOptions = {}
         throw new Error(`openai-oauth request failed ${response.status}: ${errorText.slice(0, 500)}`);
       }
 
-      const json = await response.json();
-      return validateJudgeCard(extractOutputText(json));
+      return validateJudgeCard(await extractProviderResponseText(response));
     }
 
     const response = await fetch(`${status.baseUrl}/v1/chat/completions`, {
@@ -218,7 +267,7 @@ export function makeOpenAIImageBriefProvider(options: OpenAIJudgeProviderOptions
             })),
             ...buildResponsesInput({ system, user }, responsesAttachments)
           ],
-          temperature: 0.2
+          stream: true
         })
       });
 
@@ -227,7 +276,7 @@ export function makeOpenAIImageBriefProvider(options: OpenAIJudgeProviderOptions
         throw new Error(`openai-oauth request failed ${response.status}: ${errorText.slice(0, 500)}`);
       }
 
-      return extractOutputText(await response.json());
+      return extractProviderResponseText(response);
     }
 
     const messages = [

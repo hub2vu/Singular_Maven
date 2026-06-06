@@ -240,6 +240,7 @@ describe("openai-oauth local proxy integration", () => {
       expect(receivedPath).toBe("/v1/responses");
       expect(receivedBody.model).toBe("gpt-test");
       expect(receivedBody.instructions).toBe("system prompt");
+      expect(receivedBody.temperature).toBeUndefined();
       expect(receivedBody.input).toEqual([{
         role: "user",
         content: [
@@ -284,12 +285,57 @@ describe("openai-oauth local proxy integration", () => {
       });
 
       expect(receivedPath).toBe("/v1/responses");
+      expect(receivedBody.temperature).toBeUndefined();
       const userContent = receivedBody.input[0].content;
       expect(userContent).toEqual([
         { type: "input_text", text: "judge uploaded images only" },
         { type: "input_image", image_url: "data:image/png;base64,TUlYRUQtSU1BR0U=" },
         { type: "input_image", image_url: "https://dcimg.example/uploaded-risk.png" }
       ]);
+    });
+  });
+
+  it("parses streamed responses endpoint output for data URL vision judgments", async () => {
+    process.env.OPENAI_OAUTH_AUTO_START = "0";
+
+    let receivedBody: any;
+    await withHttpServer(async (req, res) => {
+      if (req.url === "/v1/models") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ data: [{ id: "gpt-test" }] }));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      receivedBody = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
+      res.end([
+        "event: response.created",
+        "data: {\"type\":\"response.created\"}",
+        "",
+        "event: response.output_text.delta",
+        `data: ${JSON.stringify({ type: "response.output_text.delta", delta: validCardJson() })}`,
+        "",
+        "event: response.completed",
+        "data: {\"type\":\"response.completed\"}",
+        "",
+        ""
+      ].join("\n"));
+    }, async (baseUrl) => {
+      const provider = makeOpenAIJudgeProvider({ baseUrl });
+      const card = await provider({
+        prompt: { system: "system prompt", user: "judge uploaded images only" },
+        model: "gpt-test",
+        evidence: [],
+        imageUrls: ["data:image/png;base64,SU5MSU5FX0lNQUdFX0JZVEVT"],
+        visionEnabled: true
+      });
+
+      expect(receivedBody.stream).toBe(true);
+      expect(card).toMatchObject({
+        summary: "test judgment",
+        final_human_decision_required: true
+      });
     });
   });
 
