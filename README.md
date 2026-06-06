@@ -1,4 +1,4 @@
-# DCInside Maven Copilot
+# Sing_Maven Copilot
 
 Read-only Chrome Extension + local Fastify backend for LLM-first moderation review of DCInside `특이점이 온다` gallery pages.
 
