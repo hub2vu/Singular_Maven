@@ -20,6 +20,14 @@ export interface LlmProviderInput {
 
 export type LlmProvider = (input: LlmProviderInput) => Promise<JudgmentCard | string>;
 
+export interface TextJudgeProviderInput {
+  prompt: JudgePrompt;
+  model: string;
+  evidence: PolicyEvidence[];
+}
+
+export type TextJudgeProvider = (input: TextJudgeProviderInput) => Promise<JudgmentCard | string>;
+
 export interface TextProviderInput {
   system: string;
   user: string;
@@ -208,6 +216,38 @@ export function makeOpenAIJudgeProvider(options: OpenAIJudgeProviderOptions = {}
   };
 }
 
+export function makeOpenAITextJudgeProvider(options: OpenAIJudgeProviderOptions = {}): TextJudgeProvider {
+  return async ({ prompt, model }) => {
+    const status = await ensureOpenAIOAuthProxy({
+      baseUrl: options.baseUrl,
+      port: options.port,
+      autoStart: options.autoStartProxy
+    });
+
+    const response = await fetch(`${status.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: options.model ?? model,
+        messages: [
+          { role: "system", content: prompt.system },
+          { role: "user", content: prompt.user }
+        ],
+        temperature: 0.2
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`openai-oauth request failed ${response.status}: ${errorText.slice(0, 500)}`);
+    }
+
+    return validateJudgeCard(extractOutputText(await response.json()));
+  };
+}
+
 export function makeOpenAITextProvider(options: OpenAIJudgeProviderOptions = {}): TextProvider {
   return async ({ system, user, model, history = [] }) => {
     const status = await ensureOpenAIOAuthProxy({
@@ -308,8 +348,8 @@ export function makeOpenAIImageBriefProvider(options: OpenAIJudgeProviderOptions
   };
 }
 
-export function makeMockJudgeProvider(): LlmProvider {
-  return async ({ evidence }) => ({
+function mockJudgmentCard(evidence: PolicyEvidence[]): JudgmentCard {
+  return {
     summary: "개발용 mock LLM 판단 카드입니다. 실제 운영에서는 openai-oauth 로컬 프록시 로그인을 사용하세요.",
     issue_types: evidence.some((item) => item.tags.includes("특갤봇 명령 후보")) ? ["특갤봇 명령 후보"] : [],
     matched_rules: evidence,
@@ -321,5 +361,13 @@ export function makeMockJudgeProvider(): LlmProvider {
     policy_evidence: evidence.slice(0, 3).map((item) => ({ source_post_no: item.source_post_no, quote: item.excerpt, rule_id: item.rule_id })),
     special_bot_command_candidates: [],
     final_human_decision_required: true
-  });
+  };
+}
+
+export function makeMockJudgeProvider(): LlmProvider {
+  return async ({ evidence }) => mockJudgmentCard(evidence);
+}
+
+export function makeMockTextJudgeProvider(): TextJudgeProvider {
+  return async ({ evidence }) => mockJudgmentCard(evidence);
 }

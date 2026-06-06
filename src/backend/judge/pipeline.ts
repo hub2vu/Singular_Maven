@@ -4,8 +4,8 @@ import path from "node:path";
 import { redactJson, redactObservation } from "../../shared/redaction.js";
 import type { JudgePrompt, JudgmentCard, ModerationObservation, PolicyEvidence } from "../../shared/types.js";
 import { resolveJudgeModel } from "./models.js";
-import { makeOpenAIJudgeProvider, type LlmProvider } from "./openaiProvider.js";
-import { createJudgePrompt, validateJudgeCard } from "./schema.js";
+import { makeOpenAIJudgeProvider, makeOpenAITextJudgeProvider, type LlmProvider, type TextJudgeProvider } from "./openaiProvider.js";
+import { createJudgePrompt, createPageTextJudgePrompt, validateJudgeCard } from "./schema.js";
 
 export interface JudgeObservationOptions {
   observation: ModerationObservation;
@@ -26,6 +26,21 @@ export interface JudgeObservationResult {
   auditId: string;
   auditPath: string;
   screenshotPath?: string;
+  prompt: JudgePrompt;
+}
+
+export interface JudgeTextObservationOptions {
+  observation: ModerationObservation;
+  evidence: PolicyEvidence[];
+  dataDir?: string;
+  model?: string;
+  llmProvider?: TextJudgeProvider;
+}
+
+export interface JudgeTextObservationResult {
+  card: JudgmentCard;
+  auditId: string;
+  auditPath: string;
   prompt: JudgePrompt;
 }
 
@@ -69,6 +84,53 @@ function auditImageRefs(imageUrls: string[], sourceUrls?: string[]): string[] {
 
 function auditImageInputKinds(imageUrls: string[], kinds?: Array<"url" | "data-url">): Array<"url" | "data-url"> {
   return kinds ?? imageUrls.map((url) => url.startsWith("data:image/") ? "data-url" : "url");
+}
+
+export function pageTextObservation(observation: ModerationObservation): ModerationObservation {
+  return { ...observation, images: [] };
+}
+
+function auditTextObservation(observation: ModerationObservation): Record<string, unknown> {
+  const redacted = redactObservation(pageTextObservation(observation)) as unknown as Record<string, unknown>;
+  const textObservation = { ...redacted };
+  delete textObservation.images;
+  return textObservation;
+}
+
+export async function judgeTextObservation(options: JudgeTextObservationOptions): Promise<JudgeTextObservationResult> {
+  const timestamp = new Date().toISOString();
+  const dataDir = options.dataDir ?? path.join(process.cwd(), "data");
+  const model = resolveJudgeModel(options.model ?? process.env.OPENAI_MODEL);
+  const textObservation = pageTextObservation(options.observation);
+  const redactedObservation = auditTextObservation(textObservation);
+  const observationHash = sha256(JSON.stringify(redactedObservation));
+  const auditId = `${timestamp.replace(/[:.]/gu, "-")}_${observationHash.slice(0, 12)}`;
+  const prompt = createPageTextJudgePrompt({ observation: textObservation, evidence: options.evidence, model });
+  const provider = options.llmProvider ?? makeOpenAITextJudgeProvider();
+  const rawCard = await provider({
+    prompt,
+    model,
+    evidence: options.evidence
+  });
+  const card = validateJudgeCard(rawCard);
+
+  const auditDir = path.join(dataDir, "audit", today(timestamp));
+  await mkdir(auditDir, { recursive: true });
+  const auditPath = path.join(auditDir, `${auditId}.json`);
+  const auditRecord = redactJson({
+    auditId,
+    timestamp,
+    model,
+    judgmentMode: "page-text",
+    observationHash,
+    redactedObservation,
+    retrievedPolicyRefs: options.evidence,
+    llmInput: prompt,
+    llmOutput: card
+  });
+  await writeFile(auditPath, JSON.stringify(auditRecord, null, 2), "utf8");
+
+  return { card, auditId, auditPath, prompt };
 }
 
 export async function judgeObservation(options: JudgeObservationOptions): Promise<JudgeObservationResult> {

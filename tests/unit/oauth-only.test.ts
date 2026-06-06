@@ -145,6 +145,56 @@ describe("OpenAI OAuth-only auth", () => {
     }
   });
 
+  it("runs page judgment as text-only without image or vision audit fields", async () => {
+    process.env.OPENAI_OAUTH_AUTO_START = "0";
+    const tmp = await mkdtemp(path.join(tmpdir(), "maven-page-text-only-"));
+    const observation = {
+      ...observationFixture(),
+      images: [{
+        src: "https://dcimg.example/page-image.png",
+        alt: "page image alt text",
+        nearbyText: "page image nearby text"
+      }]
+    };
+
+    const server = await buildServer({ mockLlm: true, policyPath: jsonPath, dataDir: tmp });
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/judge",
+        headers: { "Content-Type": "application/json" },
+        payload: JSON.stringify({
+          observation,
+          model: "gpt-5.5",
+          screenshotDataUrl: "data:image/png;base64,SCREENSHOT_SHOULD_NOT_BE_USED"
+        })
+      });
+      const body = response.json();
+      const auditPath = path.join(tmp, "audit", body.auditId.slice(0, 10), `${body.auditId}.json`);
+      const audit = JSON.parse(await readFile(auditPath, "utf8"));
+      const auditText = JSON.stringify(audit);
+      const promptText = JSON.stringify(audit.llmInput);
+
+      expect(response.statusCode).toBe(200);
+      expect(audit).not.toHaveProperty("visionEnabled");
+      expect(audit).not.toHaveProperty("screenshotPath");
+      expect(audit).not.toHaveProperty("attachedImageUrls");
+      expect(audit).not.toHaveProperty("attachedImageInputKinds");
+      expect(audit.redactedObservation).not.toHaveProperty("images");
+      expect(promptText).not.toContain("Image handling");
+      expect(promptText.toLowerCase()).not.toContain("vision");
+      expect(promptText.toLowerCase()).not.toContain("screenshot");
+      expect(promptText.toLowerCase()).not.toContain("image_url");
+      expect(auditText).not.toContain("https://dcimg.example/page-image.png");
+      expect(auditText).not.toContain("page image alt text");
+      expect(auditText).not.toContain("page image nearby text");
+      expect(auditText).not.toContain("SCREENSHOT_SHOULD_NOT_BE_USED");
+    } finally {
+      await server.close();
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("rejects uploaded-image judgment when the observed post has no images", async () => {
     process.env.OPENAI_OAUTH_AUTO_START = "0";
 

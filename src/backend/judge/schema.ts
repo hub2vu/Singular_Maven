@@ -129,6 +129,12 @@ export interface CreateJudgePromptOptions {
   mode?: "page" | "uploaded-images";
 }
 
+export interface CreatePageTextJudgePromptOptions {
+  observation: ModerationObservation;
+  evidence: PolicyEvidence[];
+  model: string;
+}
+
 function schemaSkeleton(commentMode = false): string {
   const skeleton: Record<string, unknown> = {
     summary: "string",
@@ -210,6 +216,65 @@ export function policyEvidenceForPrompt(evidence: PolicyEvidence[]): Array<{
     quote: compactPromptText(item.quote ?? item.excerpt, 180),
     rel: item.relevance
   }));
+}
+
+function pageTextObservationForPrompt(observation: ModerationObservation): Record<string, unknown> {
+  const redacted = redactObservation({ ...observation, images: [] }) as unknown as Record<string, unknown>;
+  const textOnlyObservation = { ...redacted };
+  delete textOnlyObservation.images;
+  return textOnlyObservation;
+}
+
+function pageTextSchemaSkeleton(): string {
+  return JSON.stringify({
+    summary: "string",
+    issue_types: ["use only text-based issue types allowed by the judgment schema"],
+    matched_rules: [{ rule_id: "string", source_post_no: "string", title: "string", excerpt: "string", relevance: 0.0, tags: ["string"] }],
+    llm_reasoning: "string",
+    uncertainty: "string",
+    false_positive_risk: "string",
+    recommended_actions: [{ type: "delete candidate | ban candidate | hold | notice | bot command candidate", label: "string", rationale: "string" }],
+    current_page_evidence: [{ quote: "string", location: "body/comment/link/meta" }],
+    policy_evidence: [{ source_post_no: "string", quote: "string", rule_id: "string" }],
+    special_bot_command_candidates: ["@bot command candidate"],
+    final_human_decision_required: true
+  }, null, 2);
+}
+
+export function createPageTextJudgePrompt(options: CreatePageTextJudgePromptOptions): JudgePrompt {
+  const redactedObservation = pageTextObservationForPrompt(options.observation);
+  const system = [
+    "You are a read-only DCInside moderation copilot for a human sub-manager.",
+    "Never execute, recommend as final, or simulate irreversible moderation actions.",
+    "You must judge from the provided current-page text observation plus policy evidence. Retrieval hints are evidence, not a rules-only verdict.",
+    "Always include final_human_decision_required: true.",
+    "Allowed actions are only candidates/copy/prefill/open-tab/save-evidence. Forbidden actions include submit/delete/ban/post/comment/confirm/save/apply clicks.",
+    "Return only valid JSON matching the requested schema."
+  ].join("\n");
+
+  const user = [
+    `Model target: ${options.model}`,
+    "",
+    "CURRENT PAGE TEXT OBSERVATION (redacted JSON):",
+    JSON.stringify(redactedObservation, null, 2),
+    "",
+    "RETRIEVED POLICY / EVIDENCE POSTS:",
+    JSON.stringify(policyEvidenceForPrompt(options.evidence)),
+    "",
+    "JUDGMENT REQUIREMENTS:",
+    "- Compare current-page quotes against policy evidence source_post_no values side by side.",
+    "- Use only text fields present in the current-page observation and retrieved policy evidence.",
+    "- Do not use absent local member state or retrieved policy context alone as standalone moderation evidence.",
+    "- If recommending a bot command, only propose text for the human to copy. Do not claim it was sent.",
+    "- For bot defense durations, n must be 1..10.",
+    "- For targeted con/sticker harassment, consider repeat use against a specific user or hostile framing before recommending action.",
+    "- If the current-page text is insufficient, return a hold recommendation with explicit uncertainty.",
+    "",
+    "STRICT JSON SCHEMA SHAPE:",
+    pageTextSchemaSkeleton()
+  ].join("\n");
+
+  return { system, user };
 }
 
 export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePrompt {

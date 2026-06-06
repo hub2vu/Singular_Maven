@@ -8,9 +8,9 @@ import { redactObservation } from "../shared/redaction.js";
 import { assertSafeAutomationAction, IRREVERSIBLE_DENYLIST } from "../shared/safety.js";
 import type { ModerationObservation, ObservationImage, PolicyCorpus, PolicyEvidence } from "../shared/types.js";
 import { openAIOAuthProxyStatus } from "./auth/openaiOAuthProxy.js";
-import { auditDecision, judgeObservation } from "./judge/pipeline.js";
+import { auditDecision, judgeObservation, judgeTextObservation, pageTextObservation } from "./judge/pipeline.js";
 import { policyEvidenceForPrompt } from "./judge/schema.js";
-import { makeMockJudgeProvider, makeOpenAIImageBriefProvider, makeOpenAIJudgeProvider, makeOpenAITextProvider } from "./judge/openaiProvider.js";
+import { makeMockJudgeProvider, makeMockTextJudgeProvider, makeOpenAIImageBriefProvider, makeOpenAIJudgeProvider, makeOpenAITextJudgeProvider, makeOpenAITextProvider } from "./judge/openaiProvider.js";
 import { ALLOWED_JUDGE_MODELS, isAllowedJudgeModel, resolveJudgeModel } from "./judge/models.js";
 import { isMemberRiskLevel, MemberProfileStore } from "./members/profiles.js";
 import { discoverPolicyPath } from "./policy/pathDiscovery.js";
@@ -69,6 +69,11 @@ const judgeRequestSchema = z.object({
   observation: observationSchema,
   model: z.string().optional(),
   screenshotDataUrl: z.string().nullable().optional()
+});
+
+const pageJudgeRequestSchema = z.object({
+  observation: observationSchema,
+  model: z.string().optional()
 });
 
 const contextChatRequestSchema = z.object({
@@ -425,7 +430,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   });
 
   server.post("/api/judge", async (request, reply) => {
-    const body = judgeRequestSchema.parse(request.body);
+    const body = pageJudgeRequestSchema.parse(request.body);
     if (body.model !== undefined && !isAllowedJudgeModel(body.model)) {
       return reply.code(400).send({
         error: "Unsupported judge model",
@@ -433,13 +438,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         allowedModels: ALLOWED_JUDGE_MODELS
       });
     }
+    const observation = pageTextObservation(body.observation as ModerationObservation);
     const ingested = await ensureCorpus();
-    const evidence = retrievePolicyEvidence(ingested, body.observation as ModerationObservation, 8);
+    const evidence = retrievePolicyEvidence(ingested, observation, 8);
     const mockEnabled = options.mockLlm ?? process.env.MAVEN_ALLOW_MOCK_LLM === "1";
-    const provider = mockEnabled ? makeMockJudgeProvider() : makeOpenAIJudgeProvider();
-    const result = await judgeObservation({
-      observation: body.observation as ModerationObservation,
-      screenshotDataUrl: body.screenshotDataUrl ?? undefined,
+    const provider = mockEnabled ? makeMockTextJudgeProvider() : makeOpenAITextJudgeProvider();
+    const result = await judgeTextObservation({
+      observation,
       evidence,
       dataDir,
       model: resolveJudgeModel(body.model ?? process.env.OPENAI_MODEL),
@@ -447,8 +452,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     });
     return {
       auditId: result.auditId,
-      card: result.card,
-      screenshotPath: result.screenshotPath
+      card: result.card
     };
   });
 
