@@ -225,7 +225,7 @@ main {
 
 .member-note-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 80px;
+  grid-template-columns: minmax(0, 1fr) 54px;
   gap: 6px;
   align-items: stretch;
   margin-top: 8px;

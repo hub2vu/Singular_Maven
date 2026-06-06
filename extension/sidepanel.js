@@ -337,7 +337,7 @@
             <div class="meta">uid ${escapeHtml((profile.uids || []).join(", ") || "-")} | ip ${escapeHtml((profile.ips || []).join(", ") || "-")} | seen ${escapeHtml(profile.observationCount || 0)}</div>
             <div class="member-note-row">
               <textarea data-member-risk-note-key="${escapeHtml(profile.key)}" rows="2" aria-label="Member note for ${escapeHtml(profile.key)}" placeholder="local note">${escapeHtml(profile.riskNote || "")}</textarea>
-              <button type="button" data-member-risk-note-save-key="${escapeHtml(profile.key)}">Save note</button>
+              <button type="button" data-member-risk-note-save-key="${escapeHtml(profile.key)}">save</button>
             </div>
           </div>
           <select data-member-risk-key="${escapeHtml(profile.key)}" aria-label="Member risk for ${escapeHtml(profile.key)}">
@@ -675,14 +675,18 @@
     listImageBriefToggle.textContent = collapsed ? "펼치기" : "접기";
   }
 
-  async function observeCurrentPage(extraRequiredFeatures = []) {
+  async function observeCurrentPage(extraRequiredFeatures = [], options = {}) {
     await fetchJson("/health");
     await ensureBackendCompatible(extraRequiredFeatures);
     const observed = await sendMessage({ type: "MAVEN_OBSERVE_ACTIVE_TAB" });
     if (!observed?.ok) throw new Error(observed?.reason || "active tab observation failed");
     state.observation = observed.observation;
     state.screenshotDataUrl = observed.screenshotDataUrl;
-    renderSummary(state.observation);
+    if (options.renderSummary === false) {
+      summaryPanel.innerHTML = "";
+    } else {
+      renderSummary(state.observation);
+    }
     await refreshMembers(state.observation);
     return state.observation;
   }
@@ -999,7 +1003,7 @@
     storeRuntimeSettings();
     setJudgmentBusy(memberRiskButton, "리스크 갱신 중");
     try {
-      await observeCurrentPage();
+      await observeCurrentPage([], { renderSummary: false });
       authStatus.textContent = "local member risk updated";
     } catch (error) {
       handleJudgeError(error);

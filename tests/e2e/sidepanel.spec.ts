@@ -763,6 +763,7 @@ test("side panel refreshes local member risk without running an LLM judgment", a
 
   await expect(page.locator("#memberPanel")).toContainText("local-only-user");
   await expect(page.locator("#memberPanel")).toContainText("uid:local-only");
+  await expect(page.locator("#summaryPanel")).toBeHidden();
   const observeCalls = await page.evaluate(() => window.memberRiskObserveTabCalls || 0);
   const judgeCalls = await page.evaluate(() => window.memberRiskUnexpectedJudgeCalls || 0);
   const observedGalleryId = await page.evaluate(() => window.memberRiskObserveRequestBody?.observation?.galleryId);
@@ -824,6 +825,7 @@ test("side panel saves local member notes without running an LLM judgment", asyn
   await page.locator("#memberRiskButton").click();
 
   const noteInput = page.locator("[data-member-risk-note-key='uid:note-user']");
+  await expect(page.locator("[data-member-risk-note-save-key='uid:note-user']")).toHaveText("save");
   await expect(noteInput).toHaveValue("prior moderator context");
   await noteInput.fill("repeat baiting near blocklist");
   await page.locator("[data-member-risk-note-save-key='uid:note-user']").click();
