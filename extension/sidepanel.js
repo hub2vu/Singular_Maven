@@ -404,13 +404,32 @@
     )).join("");
   }
 
+  function localMemberRiskSortRank(profile) {
+    const riskLevel = String(profile?.riskLevel || "low");
+    if (riskLevel === "high") return 0;
+    if (riskLevel === "watch") return 1;
+    if (normalizedLocalMemberNote(profile?.riskNote)) return 2;
+    return 3;
+  }
+
+  function sortedMemberProfiles(profiles = []) {
+    return profiles
+      .map((profile, index) => ({ profile, index }))
+      .sort((left, right) => (
+        localMemberRiskSortRank(left.profile) - localMemberRiskSortRank(right.profile) ||
+        left.index - right.index
+      ))
+      .map((item) => item.profile);
+  }
+
   function renderMembers(profiles = []) {
     if (!profiles.length) {
       memberPanel.innerHTML = "";
       return;
     }
+    const visibleProfiles = sortedMemberProfiles(profiles);
     renderCollapsiblePanel(memberPanel, "memberRisk", "Local member risk", `
-      ${profiles.map((profile) => `
+      ${visibleProfiles.map((profile) => `
         <div class="member-row">
           <div class="member-main">
             <strong>${escapeHtml((profile.aliases || [])[0] || profile.key)}</strong>

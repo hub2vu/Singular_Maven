@@ -1031,6 +1031,43 @@ test("side panel refreshes local member risk without running an LLM judgment", a
   expect(observedGalleryId).toBe("thesingularity");
 });
 
+test("side panel sorts local member risk by high, watch, note, then low", async ({ page }) => {
+  await page.addInitScript(({ observation, status }) => {
+    window.__DC_MAVEN_TEST__ = {
+      sendMessage: async (message) => message.type === "MAVEN_OBSERVE_ACTIVE_TAB"
+        ? { ok: true, observation }
+        : { ok: true }
+    };
+    window.fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/api/auth/openai/status")) {
+        return new Response(JSON.stringify(status), { status: 200 });
+      }
+      if (url.includes("/api/capabilities")) {
+        return new Response(JSON.stringify({ features: ["members.observe", "openai-oauth-proxy", "judge.model-select"] }), { status: 200 });
+      }
+      if (url.includes("/api/members/observe")) {
+        return new Response(JSON.stringify({
+          profiles: [
+            { key: "uid:low", riskLevel: "low", aliases: ["low-user"], uids: ["low"], ips: [], observationCount: 1 },
+            { key: "uid:noted", riskLevel: "low", riskNote: "has note", aliases: ["noted-user"], uids: ["noted"], ips: [], observationCount: 1 },
+            { key: "uid:watch", riskLevel: "watch", aliases: ["watch-user"], uids: ["watch"], ips: [], observationCount: 1 },
+            { key: "uid:high", riskLevel: "high", aliases: ["high-user"], uids: ["high"], ips: [], observationCount: 1 }
+          ]
+        }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    };
+  }, { observation: observationFixture(), status: proxyStatus(true) });
+
+  await page.goto(pathToFileURL(path.join(repoRoot, "extension/sidepanel.html")).toString());
+  await page.locator("#memberRiskButton").click();
+  await expect(page.locator("#memberPanel .member-row")).toHaveCount(4);
+
+  const names = await page.locator("#memberPanel .member-row .member-main strong").allTextContents();
+  expect(names).toEqual(["high-user", "watch-user", "noted-user", "low-user"]);
+});
+
 test("side panel saves local member notes without running an LLM judgment", async ({ page }) => {
   await page.addInitScript(({ observation, status }) => {
     window.__DC_MAVEN_TEST__ = {
