@@ -21,32 +21,43 @@
       </div>
     </header>
 
-    <section class="backend-row">
-      <label for="modelSelect">Model</label>
-      <select id="modelSelect" aria-label="Judge model">
-        <option value="gpt-5.5">GPT-5.5</option>
-        <option value="gpt-5.5-mini">GPT-5.5-Mini</option>
-        <option value="gpt-5.4">GPT-5.4</option>
-        <option value="gpt-5.4-mini">GPT-5.4-Mini</option>
-        <option value="gpt-5.3-codex">GPT-5.3-Codex</option>
-        <option value="gpt-5.3-codex-spark">GPT-5.3-Codex-Spark</option>
-        <option value="gpt-5.2">GPT-5.2</option>
-      </select>
+    <section class="backend-row settings-panel" data-collapsible-section="model">
+      <div class="panel-heading">
+        <h2 class="section-title">Model</h2>
+        <button class="panel-toggle" type="button" data-section-toggle="model" aria-expanded="true" aria-controls="modelSectionBody">접기</button>
+      </div>
+      <div id="modelSectionBody" class="collapsible-body setting-body" data-section-body="model">
+        <label for="modelSelect">Model</label>
+        <select id="modelSelect" aria-label="Judge model">
+          <option value="gpt-5.5">GPT-5.5</option>
+          <option value="gpt-5.5-mini">GPT-5.5-Mini</option>
+          <option value="gpt-5.4">GPT-5.4</option>
+          <option value="gpt-5.4-mini">GPT-5.4-Mini</option>
+          <option value="gpt-5.3-codex">GPT-5.3-Codex</option>
+          <option value="gpt-5.3-codex-spark">GPT-5.3-Codex-Spark</option>
+          <option value="gpt-5.2">GPT-5.2</option>
+        </select>
+      </div>
     </section>
 
     <main>
-      <section id="oauthPanel" class="panel auth-panel" hidden>
-        <h2 class="section-title">OpenAI OAuth</h2>
-        <p id="oauthHelp">Uses local openai-oauth proxy. If login is needed, run npx @openai/codex login once.</p>
-        <button id="startProxyButton" type="button">Start OAuth proxy</button>
-        <p id="oauthProxyStatus"></p>
+      <section id="oauthPanel" class="panel auth-panel" hidden data-collapsible-section="oauth">
+        <div class="panel-heading">
+          <h2 class="section-title">OpenAI OAuth</h2>
+          <button class="panel-toggle" type="button" data-section-toggle="oauth" aria-expanded="true" aria-controls="oauthBody">접기</button>
+        </div>
+        <div id="oauthBody" class="collapsible-body" data-section-body="oauth">
+          <p id="oauthHelp">Uses local openai-oauth proxy. If login is needed, run npx @openai/codex login once.</p>
+          <button id="startProxyButton" type="button">Start OAuth proxy</button>
+          <p id="oauthProxyStatus"></p>
+        </div>
       </section>
-      <section id="listImageBriefPanel" class="panel list-image-brief">
+      <section id="listImageBriefPanel" class="panel list-image-brief" data-collapsible-section="listImageBrief">
         <div class="panel-heading">
           <h2 class="section-title">목록 이미지 브리핑</h2>
-          <button id="listImageBriefToggle" class="panel-toggle" type="button" aria-expanded="true" aria-controls="listImageBriefBody">접기</button>
+          <button id="listImageBriefToggle" class="panel-toggle" type="button" data-section-toggle="listImageBrief" aria-expanded="true" aria-controls="listImageBriefBody">접기</button>
         </div>
-        <div id="listImageBriefBody" class="collapsible-body">
+        <div id="listImageBriefBody" class="collapsible-body" data-section-body="listImageBrief">
           <form id="listImageBriefForm" class="list-image-brief-form">
             <input id="listImageTitleInput" type="text" placeholder="보이는 게시글 제목" autocomplete="off" />
             <button id="listImageBriefButton" type="submit">브리핑</button>
@@ -58,27 +69,44 @@
       <section id="memberPanel" class="panel"></section>
       <section id="cardPanel" class="panel"></section>
       <section id="actionsPanel" class="panel actions"></section>
-      <section id="contextChatPanel" class="panel context-chat">
-        <div id="contextChatMessages" class="context-chat-messages" aria-live="polite"></div>
-        <form id="contextQuestionForm" class="context-question-form">
-          <textarea id="contextQuestionInput" rows="2" placeholder="현재 맥락에서 질문"></textarea>
-          <button id="contextAskButton" type="submit">질문</button>
-        </form>
+      <section id="contextChatPanel" class="panel context-chat" data-collapsible-section="contextChat">
+        <div class="panel-heading">
+          <h2 class="section-title">질문</h2>
+          <button class="panel-toggle" type="button" data-section-toggle="contextChat" aria-expanded="true" aria-controls="contextChatBody">접기</button>
+        </div>
+        <div id="contextChatBody" class="collapsible-body" data-section-body="contextChat">
+          <div id="contextChatMessages" class="context-chat-messages" aria-live="polite"></div>
+          <form id="contextQuestionForm" class="context-question-form">
+            <textarea id="contextQuestionInput" rows="2" placeholder="현재 맥락에서 질문"></textarea>
+            <button id="contextAskButton" type="submit">질문</button>
+          </form>
+        </div>
       </section>
       <section id="errorPanel" class="error" hidden></section>
-      <section id="forbiddenEmoticonPanel" class="panel forbidden-emoticons">
-        <h2 class="section-title">금지 이모티콘</h2>
-        <form id="forbiddenEmoticonForm" class="forbidden-emoticon-form">
-          <input id="forbiddenEmoticonInput" type="text" placeholder="이모티콘 이름" autocomplete="off" />
-          <button id="forbiddenEmoticonAddButton" type="submit">추가</button>
-        </form>
-        <div id="forbiddenEmoticonList" class="forbidden-emoticon-list"></div>
+      <section id="forbiddenEmoticonPanel" class="panel forbidden-emoticons" data-collapsible-section="forbiddenEmoticons">
+        <div class="panel-heading">
+          <h2 class="section-title">금지 이모티콘</h2>
+          <button class="panel-toggle" type="button" data-section-toggle="forbiddenEmoticons" aria-expanded="true" aria-controls="forbiddenEmoticonBody">접기</button>
+        </div>
+        <div id="forbiddenEmoticonBody" class="collapsible-body" data-section-body="forbiddenEmoticons">
+          <form id="forbiddenEmoticonForm" class="forbidden-emoticon-form">
+            <input id="forbiddenEmoticonInput" type="text" placeholder="이모티콘 이름" autocomplete="off" />
+            <button id="forbiddenEmoticonAddButton" type="submit">추가</button>
+          </form>
+          <div id="forbiddenEmoticonList" class="forbidden-emoticon-list"></div>
+        </div>
       </section>
     </main>
 
-    <section class="backend-row">
-      <label for="backendUrl">Backend</label>
-      <input id="backendUrl" type="url" value="http://127.0.0.1:8787" />
+    <section class="backend-row settings-panel" data-collapsible-section="backend">
+      <div class="panel-heading">
+        <h2 class="section-title">Backend</h2>
+        <button class="panel-toggle" type="button" data-section-toggle="backend" aria-expanded="true" aria-controls="backendSectionBody">접기</button>
+      </div>
+      <div id="backendSectionBody" class="collapsible-body setting-body" data-section-body="backend">
+        <label for="backendUrl">Backend</label>
+        <input id="backendUrl" type="url" value="http://127.0.0.1:8787" />
+      </div>
     </section>
 
     <script src="sidepanel.js"></script>

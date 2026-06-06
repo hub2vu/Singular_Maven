@@ -153,6 +153,25 @@ main {
   display: none;
 }
 
+.collapsible-body:not([hidden]) {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-panel {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.setting-body:not([hidden]) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
 .meta {
   display: grid;
   gap: 4px;
@@ -246,6 +265,11 @@ main {
 }
 
 .actions {
+  display: grid;
+  gap: 8px;
+}
+
+.actions-body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;

@@ -106,6 +106,76 @@ test("side panel places forbidden emoticons and Backend controls at the bottom",
   expect(order).toEqual({ forbiddenAfterContext: true, backendAfterForbidden: true });
 });
 
+test("side panel lets every section collapse and expand", async ({ page }) => {
+  await page.addInitScript(({ observation, judgment, status }) => {
+    window.__DC_MAVEN_TEST__ = {
+      sendMessage: async (message) => {
+        if (message.type === "MAVEN_OBSERVE_ACTIVE_TAB") {
+          return {
+            ok: true,
+            observation,
+            screenshotDataUrl: "data:image/png;base64,iVBORw0KGgo="
+          };
+        }
+        return { ok: true };
+      }
+    };
+    window.fetch = async (input, options) => {
+      const url = String(input);
+      if (url.includes("/api/auth/openai/status")) {
+        return new Response(JSON.stringify(status), { status: 200 });
+      }
+      if (url.includes("/api/capabilities")) {
+        return new Response(JSON.stringify({ features: ["members.observe", "openai-oauth-proxy", "judge.model-select"] }), { status: 200 });
+      }
+      if (url.includes("/api/members/observe")) {
+        return new Response(JSON.stringify({
+          profiles: [{
+            key: "uid:fixture123",
+            riskLevel: "watch",
+            aliases: ["fixture-user"],
+            uids: ["fixture123"],
+            ips: ["118.235"],
+            observationCount: 1,
+            postCount: 1,
+            commentCount: 0
+          }]
+        }), { status: 200 });
+      }
+      if (url.includes("/api/judge")) {
+        window.collapsibleJudgeRequestBody = JSON.parse(String(options?.body || "{}"));
+        return new Response(JSON.stringify({
+          auditId: "audit-collapsible",
+          card: judgment
+        }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    };
+  }, { observation: observationFixture(), judgment: judgmentFixture("Collapsible judgment"), status: proxyStatus(true) });
+
+  await page.goto(pathToFileURL(path.join(repoRoot, "extension/sidepanel.html")).toString());
+
+  for (const key of ["model", "listImageBrief", "contextChat", "forbiddenEmoticons", "backend"]) {
+    await expect(page.locator(`[data-section-toggle='${key}']`)).toHaveAttribute("aria-expanded", "true");
+    await page.locator(`[data-section-toggle='${key}']`).click();
+    await expect(page.locator(`[data-section-body='${key}']`)).toBeHidden();
+    await expect(page.locator(`[data-section-toggle='${key}']`)).toHaveAttribute("aria-expanded", "false");
+    await page.locator(`[data-section-toggle='${key}']`).click();
+    await expect(page.locator(`[data-section-body='${key}']`)).toBeVisible();
+  }
+
+  await page.locator("#judgeButton").click();
+
+  for (const key of ["summary", "memberRisk", "resultCard", "actions"]) {
+    await expect(page.locator(`[data-section-toggle='${key}']`)).toHaveAttribute("aria-expanded", "true");
+    await page.locator(`[data-section-toggle='${key}']`).click();
+    await expect(page.locator(`[data-section-body='${key}']`)).toBeHidden();
+    await expect(page.locator(`[data-section-toggle='${key}']`)).toHaveAttribute("aria-expanded", "false");
+    await page.locator(`[data-section-toggle='${key}']`).click();
+    await expect(page.locator(`[data-section-body='${key}']`)).toBeVisible();
+  }
+});
+
 test("side panel shows a judgment card with current-page and policy evidence", async ({ page }) => {
   await page.addInitScript(({ observation, judgment, status }) => {
     window.__DC_MAVEN_TEST__ = {

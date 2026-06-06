@@ -20,6 +20,7 @@
   ];
   const DEFAULT_FORBIDDEN_EMOTICONS = ["갱생특갤콘"];
   const FORBIDDEN_EMOTICONS_STORAGE_KEY = "mavenForbiddenEmoticons";
+  const COLLAPSED_SECTIONS_STORAGE_KEY = "mavenCollapsedSections";
   const MODEL_LABELS = {
     "gpt-5.5": "GPT-5.5",
     "gpt-5.5-mini": "GPT-5.5-Mini",
@@ -183,6 +184,87 @@
     errorPanel.textContent = message || "";
   }
 
+  function loadCollapsedSections() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(COLLAPSED_SECTIONS_STORAGE_KEY) || "[]");
+      return new Set(Array.isArray(saved) ? saved.filter((key) => typeof key === "string") : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function saveCollapsedSections(sections) {
+    localStorage.setItem(COLLAPSED_SECTIONS_STORAGE_KEY, JSON.stringify(Array.from(sections)));
+  }
+
+  function isSectionCollapsed(key) {
+    return loadCollapsedSections().has(key);
+  }
+
+  function sectionElement(attribute, key, root = document) {
+    return Array.from(root.querySelectorAll(`[${attribute}]`))
+      .find((element) => element.dataset.sectionToggle === key || element.dataset.sectionBody === key);
+  }
+
+  function setSectionCollapsed(key, collapsed, options = {}) {
+    const body = sectionElement("data-section-body", key);
+    const toggle = sectionElement("data-section-toggle", key);
+    if (!body || !toggle) return;
+    body.hidden = collapsed;
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    toggle.textContent = collapsed ? "펼치기" : "접기";
+    if (options.persist !== false) {
+      const sections = loadCollapsedSections();
+      if (collapsed) sections.add(key);
+      else sections.delete(key);
+      saveCollapsedSections(sections);
+    }
+  }
+
+  function initializeCollapsibleSections(root = document) {
+    for (const toggle of root.querySelectorAll("[data-section-toggle]")) {
+      const key = toggle.dataset.sectionToggle;
+      if (!key) continue;
+      if (!toggle.dataset.sectionToggleBound) {
+        toggle.addEventListener("click", () => {
+          const body = sectionElement("data-section-body", key);
+          const collapsed = !body?.hidden;
+          if (key === "listImageBrief") {
+            setListImageBriefCollapsed(collapsed);
+            const sections = loadCollapsedSections();
+            if (collapsed) sections.add(key);
+            else sections.delete(key);
+            saveCollapsedSections(sections);
+          } else {
+            setSectionCollapsed(key, collapsed);
+          }
+        });
+        toggle.dataset.sectionToggleBound = "true";
+      }
+      setSectionCollapsed(key, isSectionCollapsed(key), { persist: false });
+    }
+  }
+
+  function collapsiblePanelHtml(key, title, bodyHtml) {
+    const bodyId = `${key}SectionBody`;
+    const collapsed = isSectionCollapsed(key);
+    return `
+      <div class="panel-heading">
+        <h2 class="section-title">${escapeHtml(title)}</h2>
+        <button class="panel-toggle" type="button" data-section-toggle="${escapeHtml(key)}" aria-expanded="${collapsed ? "false" : "true"}" aria-controls="${escapeHtml(bodyId)}">${collapsed ? "펼치기" : "접기"}</button>
+      </div>
+      <div id="${escapeHtml(bodyId)}" class="collapsible-body" data-section-body="${escapeHtml(key)}"${collapsed ? " hidden" : ""}>
+        ${bodyHtml}
+      </div>
+    `;
+  }
+
+  function renderCollapsiblePanel(panel, key, title, bodyHtml) {
+    panel.hidden = false;
+    panel.innerHTML = collapsiblePanelHtml(key, title, bodyHtml);
+    initializeCollapsibleSections(panel);
+  }
+
   function showOAuthPanel(status) {
     const needsAttention = !status?.configured || !status?.proxyReady;
     oauthPanel.hidden = !needsAttention;
@@ -305,15 +387,14 @@
   }
 
   function renderSummary(observation) {
-    summaryPanel.innerHTML = `
-      <h2 class="section-title">Current page summary</h2>
+    renderCollapsiblePanel(summaryPanel, "summary", "Current page summary", `
       <div class="meta">
         <div><strong>${escapeHtml(observation.title)}</strong></div>
         <div>${escapeHtml(observation.galleryId || "-")} · ${escapeHtml(observation.postNo || "-")} · ${escapeHtml(observation.head || "-")}</div>
         <div>${escapeHtml(observation.author?.name || "-")} · ${escapeHtml(observation.createdAtText || "-")}</div>
         <div>body ${escapeHtml(String(observation.bodyText?.length || 0))} chars · comments ${escapeHtml(String(observation.comments?.length || 0))} · images ${escapeHtml(String(observation.images?.length || 0))}</div>
       </div>
-    `;
+    `);
   }
 
   function riskOptions(current) {
@@ -327,8 +408,7 @@
       memberPanel.innerHTML = "";
       return;
     }
-    memberPanel.innerHTML = `
-      <h2 class="section-title">Local member risk</h2>
+    renderCollapsiblePanel(memberPanel, "memberRisk", "Local member risk", `
       ${profiles.map((profile) => `
         <div class="member-row">
           <div class="member-main">
@@ -347,7 +427,7 @@
           </div>
         </div>
       `).join("")}
-    `;
+    `);
     for (const select of memberPanel.querySelectorAll("[data-member-risk-key]")) {
       select.addEventListener("change", () => updateMemberRisk(select.dataset.memberRiskKey, select.value, memberNoteValue(select.dataset.memberRiskKey)));
     }
@@ -528,8 +608,7 @@
   }
 
   function renderCard(card) {
-    cardPanel.innerHTML = `
-      <h2 class="section-title">${escapeHtml(card.summary)}</h2>
+    renderCollapsiblePanel(cardPanel, "resultCard", card.summary, `
       <div class="chips">${(card.issue_types || []).map((type) => `<span class="chip">${escapeHtml(type)}</span>`).join("")}</div>
       <p><strong>LLM reasoning</strong><br />${escapeHtml(card.llm_reasoning)}</p>
       <p><strong>uncertainty</strong>: ${escapeHtml(card.uncertainty)}</p>
@@ -541,7 +620,7 @@
       ${renderRules(card.matched_rules)}
       <h3 class="section-title">recommended actions</h3>
       ${(card.recommended_actions || []).map((action) => `<div class="quote"><strong>${escapeHtml(action.type)}</strong> · ${escapeHtml(action.label)}<br />${escapeHtml(action.rationale)}</div>`).join("")}
-    `;
+    `);
   }
 
   function renderContextMessages() {
@@ -581,7 +660,8 @@
   }
 
   function renderActions() {
-    actionsPanel.innerHTML = "";
+    renderCollapsiblePanel(actionsPanel, "actions", "Actions", `<div class="actions-body"></div>`);
+    const actionsBody = actionsPanel.querySelector(".actions-body");
     const buttons = [
       ["Copy post URL", () => copyText(state.observation?.url || "")],
       ["Show comments", () => sendMessage({ type: "MAVEN_SAFE_ACTION", action: { kind: "scroll", selector: "#comments, .comment_box, .cmt_list", label: "show comments" } })],
@@ -603,14 +683,14 @@
       button.type = "button";
       button.textContent = label;
       button.addEventListener("click", () => Promise.resolve(handler()).catch((error) => setError(String(error?.message || error))));
-      actionsPanel.appendChild(button);
+      actionsBody.appendChild(button);
     }
     for (const [label, outcome] of decisionButtons) {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = label;
       button.addEventListener("click", () => recordDecision(outcome).catch((error) => setError(String(error?.message || error))));
-      actionsPanel.appendChild(button);
+      actionsBody.appendChild(button);
     }
   }
 
@@ -910,8 +990,7 @@
       .filter((item) => !candidateNamesForForbiddenMatch(item).length)
       .map((item, index) => `#${index + 1} ${item.iconTitle || item.sourceHint || item.dcconCode || "unknown"}`)
       .slice(0, 8);
-    cardPanel.innerHTML = `
-      <h2 class="section-title">${escapeHtml(title)}</h2>
+    renderCollapsiblePanel(cardPanel, "resultCard", title, `
       <p>
         forbidden: ${escapeHtml(forbiddenNames.join(", ") || "-")}<br />
         detected comment emoticons: ${escapeHtml(String(detections.length))}<br />
@@ -920,7 +999,7 @@
       ${foundBlocks || `<div class="quote">${escapeHtml("현재 금지 목록과 정확히 일치하는 댓글 이모티콘 이름이 없습니다.")}</div>`}
       ${unresolved.length ? `<div class="quote"><strong>unresolved</strong><br />${escapeHtml(unresolved.join("\n"))}</div>` : ""}
       <div class="quote"><strong>source</strong><br />${escapeHtml(observation.url || "-")}</div>
-    `;
+    `);
   }
 
   function renderListImageBriefResult(result, observation, listPost) {
@@ -1169,12 +1248,10 @@
   memberRiskButton.addEventListener("click", refreshLocalMemberRisk);
   emoticonJudgeButton.addEventListener("click", judgeCurrentCommentEmoticons);
   imageJudgeButton.addEventListener("click", judgeCurrentImages);
-  listImageBriefToggle.addEventListener("click", () => {
-    setListImageBriefCollapsed(!listImageBriefBody.hidden);
-  });
   listImageBriefForm.addEventListener("submit", briefListPostImages);
   contextQuestionForm.addEventListener("submit", askContextQuestion);
   startProxyButton.addEventListener("click", ensureOpenAIOAuthProxy);
+  initializeCollapsibleSections();
   renderForbiddenEmoticons();
   refreshStatus();
 })();
