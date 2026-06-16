@@ -2,19 +2,45 @@ import { z } from "zod";
 import { redactObservation } from "../../shared/redaction.js";
 import type { JudgePrompt, JudgmentCard, ModerationObservation, PolicyEvidence } from "../../shared/types.js";
 
-const issueTypeSchema = z.enum([
+const ISSUE_TYPE_VALUES = [
   "이왜특/갤무관",
+  "이용약관/법률/사회통념",
   "정떡",
+  "정치/지역/성별혐오",
   "완장고로시",
+  "닉언/친목/사칭",
+  "분탕/어그로",
+  "종교/음모론",
+  "반과학/유사과학",
+  "선형글/레퍼런스 부족",
+  "인증/팬보이/갈드컵",
   "도배기/역류기",
   "이미지 리스크",
   "수익/홍보/강의팔이",
+  "프로그램 홍보",
+  "주식/코인/투자",
+  "국뽕/출산율/혐오떡밥",
   "타커뮤 캡처/조롱",
+  "타갤/타커뮤 언급",
   "요주의 계정/IP/VPN",
+  "비관론갤 활동",
+  "허위사실/이미지 저해",
+  "욕설싸움/분쟁",
+  "금지 떡밥",
+  "개념글 제한",
+  "레퍼런스 기준",
+  "허용 예외",
   "특갤봇 명령 후보"
-]);
+] as const;
 
-const recommendedActionTypeSchema = z.enum(["삭제 후보", "차단 후보", "보류", "공지", "특갤봇 명령 후보"]);
+const RECOMMENDED_ACTION_TYPE_VALUES = ["삭제 후보", "차단 후보", "보류", "공지", "특갤봇 명령 후보"] as const;
+
+const issueTypeSchema = z.enum(ISSUE_TYPE_VALUES);
+
+const recommendedActionTypeSchema = z.enum(RECOMMENDED_ACTION_TYPE_VALUES);
+
+type IssueTypeValue = z.infer<typeof issueTypeSchema>;
+type RecommendedActionTypeValue = z.infer<typeof recommendedActionTypeSchema>;
 
 export const policyEvidenceSchema = z.object({
   rule_id: z.string().min(1),
@@ -138,12 +164,12 @@ export interface CreatePageTextJudgePromptOptions {
 function schemaSkeleton(commentMode = false): string {
   const skeleton: Record<string, unknown> = {
     summary: "string",
-    issue_types: ["이왜특/갤무관 | 정떡 | 완장고로시 | 도배기/역류기 | 이미지 리스크 | 수익/홍보/강의팔이 | 타커뮤 캡처/조롱 | 요주의 계정/IP/VPN | 특갤봇 명령 후보"],
+    issue_types: [ISSUE_TYPE_VALUES.join(" | ")],
     matched_rules: [{ rule_id: "string", source_post_no: "string", title: "string", excerpt: "string", relevance: 0.0, tags: ["string"] }],
     llm_reasoning: "string",
     uncertainty: "string",
     false_positive_risk: "string",
-    recommended_actions: [{ type: "삭제 후보 | 차단 후보 | 보류 | 공지 | 특갤봇 명령 후보", label: "string", rationale: "string" }],
+    recommended_actions: [{ type: RECOMMENDED_ACTION_TYPE_VALUES.join(" | "), label: "string", rationale: "string" }],
     current_page_evidence: [{ quote: "string", location: "body/comment/image/link/meta" }],
     policy_evidence: [{ source_post_no: "string", quote: "string", rule_id: "string" }],
     special_bot_command_candidates: ["@특갤봇 댓글방어(3)"],
@@ -228,17 +254,29 @@ function pageTextObservationForPrompt(observation: ModerationObservation): Recor
 function pageTextSchemaSkeleton(): string {
   return JSON.stringify({
     summary: "string",
-    issue_types: ["use only text-based issue types allowed by the judgment schema"],
+    issue_types: [ISSUE_TYPE_VALUES.join(" | ")],
     matched_rules: [{ rule_id: "string", source_post_no: "string", title: "string", excerpt: "string", relevance: 0.0, tags: ["string"] }],
     llm_reasoning: "string",
     uncertainty: "string",
     false_positive_risk: "string",
-    recommended_actions: [{ type: "delete candidate | ban candidate | hold | notice | bot command candidate", label: "string", rationale: "string" }],
+    recommended_actions: [{ type: RECOMMENDED_ACTION_TYPE_VALUES.join(" | "), label: "string", rationale: "string" }],
     current_page_evidence: [{ quote: "string", location: "body/comment/link/meta" }],
     policy_evidence: [{ source_post_no: "string", quote: "string", rule_id: "string" }],
     special_bot_command_candidates: ["@bot command candidate"],
     final_human_decision_required: true
   }, null, 2);
+}
+
+function currentPublicPolicyRequirements(): string[] {
+  return [
+    "- Apply the 2026-06-13 thesingularity public rules when relevant. Key categories include 닉언/친목/사칭, 분탕/어그로, 종교/음모론, 반과학/유사과학, 레퍼런스 없는 선형글, 인증 없는 현직자/전공자 주장, 팬보이/갈드컵, 주식/코인/투자, 국뽕/출산율/혐오떡밥, 정치/지역/성별혐오, 타갤/타커뮤 언급, 비관론갤 활동, 허위사실/이미지 저해, 욕설싸움/분쟁, 금지 떡밥, 개념글 제한, 레퍼런스 기준, 프로그램 홍보.",
+    "- 닉언/친목/사칭은 실제 닉네임 언급, 사적 친분 과시, 외부 채널/인그룹 언어, 타인 사칭 근거를 현재 페이지에서 인용한다. 댓글 모드에서는 nickname_mention_policy_risk와 clique_likelihood를 분리한다.",
+    "- 레퍼런스 없는 선형글은 특이점주의에 반하는 주장(예: AGI 불가능, 기술적 특이점은 2045년 이후)을 하면서 인정 가능한 레퍼런스가 없는 경우로 본다.",
+    "- 레퍼런스 기준은 공식 발언/원문, 공신력 있는 논문, 석박사급 학술 내용, 제도권 언론 기사 순으로 본다. 본인의 생각을 그럴듯하게 쓴 글, 사설, 기고문은 레퍼런스로 보지 않는다.",
+    "- 정치/지역/성별혐오는 글과 댓글 모두 금지다. 이미 확정된 국가 차원의 정책 사실 전달만 예외일 수 있고, 지지/조롱/반복/사설성 목적이 섞이면 예외로 보지 않는다.",
+    "- 프로그램 홍보는 단순 홍보 금지, 정보 가치가 충분하면 영리 목적도 허용 가능, 유용하거나 반응이 좋으면 허용 가능, 동일 프로그램은 최대 2회 기준으로 본다.",
+    "- 사실에 기반한 완장 비판, 현재 기술 (AI 등)에 대한 비판, 단순 욕설은 그 자체만으로 삭제나 차단 사유가 아니다."
+  ];
 }
 
 export function createPageTextJudgePrompt(options: CreatePageTextJudgePromptOptions): JudgePrompt {
@@ -263,6 +301,7 @@ export function createPageTextJudgePrompt(options: CreatePageTextJudgePromptOpti
     "",
     "JUDGMENT REQUIREMENTS:",
     "- Compare current-page quotes against policy evidence source_post_no values side by side.",
+    ...currentPublicPolicyRequirements(),
     "- Use only text fields present in the current-page observation and retrieved policy evidence.",
     "- Do not use absent local member state or retrieved policy context alone as standalone moderation evidence.",
     "- If recommending a bot command, only propose text for the human to copy. Do not claim it was sent.",
@@ -310,8 +349,8 @@ export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePromp
     "",
     "JUDGMENT REQUIREMENTS:",
     "- Compare current-page quotes against policy evidence source_post_no values side by side.",
+    ...currentPublicPolicyRequirements(),
     "- 완장고로시는 '완장/파딱/주딱/매니저' 단어 단독이 아니라 운영진 앵커 + 공격/해임/친목/권력남용 프레임 + 반복/여론몰이/저신뢰 정황을 함께 본다.",
-    "- 닉언콘/친목 조항은 비활성화되었습니다. 단순 이모티콘, 콘, 스티커, 닉네임 언급만으로 삭제 후보나 차단 후보를 만들지 마세요.",
     "- 저격성 콘사용은 별도 기준입니다. 특정 유저를 겨냥한 조롱/공격 목적의 콘, 이모티콘, 스티커 사용이 같은 유저에게 반복되면 7~31일 차단 후보로 보고, 모르고 사용한 것처럼 보이거나 단발성/경미한 경우에는 1일 또는 6시간 차단 후보로 낮춰 제안하세요. 단순 콘/스티커만으로 적용하지 말고 사용자 반복성, 대상 특정성, 조롱/공격 맥락을 인용하세요.",
     ...(commentTextMode ? [
       "- 댓글 판단 모드: CURRENT PAGE OBSERVATION.comments와 bodyText에 있는 댓글만 판단하고 본문/이미지 판단은 하지 않는다.",
@@ -334,7 +373,7 @@ export function createJudgePrompt(options: CreateJudgePromptOptions): JudgePromp
     ...(commentMode ? [
       "- 친목/네임드화 판단도 수행한다. clique_likelihood low/medium/high와 clique_summary를 채운다.",
       "- 닉언 정책 리스크와 친목/네임드화 리스크는 분리한다. nickname_mention_policy_risk는 별도 필드로 적는다.",
-      "- 단순 닉네임 언급, @호출, 디시콘, 이모티콘, 스티커, 밈 반응, 완장/파딱 같은 역할 언급만으로 친목으로 판정하지 않는다. 이런 오탐 가드는 nickname_mention_only 또는 false_positive_exempt signal로 남긴다.",
+      "- 단순 닉네임 언급이나 @호출은 닉언 정책 리스크로 분리하고, 사적 친분/내부자 언어/외부 채널 근거가 없으면 친목/네임드화 high로 과대판정하지 않는다. 이런 구분은 nickname_mention_only 또는 false_positive_exempt signal로 남긴다.",
       "- '친목이다'라는 비난 자체는 근거가 아니다. 실제 댓글에 사적 친분, 내부자 언어, 외부 채널, 반복적 개인 대화가 있어야 한다.",
       "- high는 외부/사적 채널 유도, 우리끼리식 배제 언어, 반복적 사담, 특정 고닉 중심 호감작 등 강한 근거가 있을 때만 사용한다.",
       "- per_user에는 가능하면 clique_role, clique_risk_level, clique_rationale, clique_evidence_quotes, clique_fp_exemptions를 함께 채운다.",
@@ -368,7 +407,120 @@ export function parseJsonObject(text: string): unknown {
   throw new Error("LLM output did not contain a JSON object");
 }
 
+function aliasKey(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase().replace(/[_\s]+/gu, "-");
+}
+
+const issueTypeAliases: Record<string, IssueTypeValue> = {
+  "off-topic": "이왜특/갤무관",
+  "irrelevant": "이왜특/갤무관",
+  "off-topic/irrelevant": "이왜특/갤무관",
+  "law-social-norms": "이용약관/법률/사회통념",
+  "illegal-content": "이용약관/법률/사회통념",
+  "politics": "정떡",
+  "political": "정떡",
+  "politics-region-gender-hate": "정치/지역/성별혐오",
+  "gender-hate": "정치/지역/성별혐오",
+  "regional-slur": "정치/지역/성별혐오",
+  "moderator-harassment": "완장고로시",
+  "staff-harassment": "완장고로시",
+  "nickname-clique-impersonation": "닉언/친목/사칭",
+  "nickname-mention": "닉언/친목/사칭",
+  "clique": "닉언/친목/사칭",
+  "impersonation": "닉언/친목/사칭",
+  "trolling": "분탕/어그로",
+  "ragebait": "분탕/어그로",
+  "religion-conspiracy": "종교/음모론",
+  "conspiracy": "종교/음모론",
+  "religion": "종교/음모론",
+  "anti-science": "반과학/유사과학",
+  "pseudoscience": "반과학/유사과학",
+  "anti-intellectualism": "반과학/유사과학",
+  "unreferenced-anti-singularity": "선형글/레퍼런스 부족",
+  "linear-no-reference": "선형글/레퍼런스 부족",
+  "missing-reference": "선형글/레퍼런스 부족",
+  "credentials-fanboy-flamebait": "인증/팬보이/갈드컵",
+  "flamebait": "인증/팬보이/갈드컵",
+  "spam": "도배기/역류기",
+  "flood": "도배기/역류기",
+  "macro": "도배기/역류기",
+  "reverse-flooding": "도배기/역류기",
+  "image-risk": "이미지 리스크",
+  "profit/promo/course-sales": "수익/홍보/강의팔이",
+  "promotion": "수익/홍보/강의팔이",
+  "program-promotion": "프로그램 홍보",
+  "investment": "주식/코인/투자",
+  "stocks-coins-investment": "주식/코인/투자",
+  "nationalism-birthrate-hatebait": "국뽕/출산율/혐오떡밥",
+  "nationalism": "국뽕/출산율/혐오떡밥",
+  "external-community-capture/mockery": "타커뮤 캡처/조롱",
+  "external-community": "타커뮤 캡처/조롱",
+  "other-gallery-community-mention": "타갤/타커뮤 언급",
+  "other-gallery": "타갤/타커뮤 언급",
+  "watchlisted-account/ip/vpn": "요주의 계정/IP/VPN",
+  "account/ip/vpn": "요주의 계정/IP/VPN",
+  "pessimism-gallery-activity": "비관론갤 활동",
+  "false-information": "허위사실/이미지 저해",
+  "reputation-harm": "허위사실/이미지 저해",
+  "abusive-fight": "욕설싸움/분쟁",
+  "banned-topic": "금지 떡밥",
+  "front-page-restriction": "개념글 제한",
+  "reference-standard": "레퍼런스 기준",
+  "allowed-exception": "허용 예외",
+  "bot-command-candidate": "특갤봇 명령 후보"
+};
+
+const recommendedActionTypeAliases: Record<string, RecommendedActionTypeValue> = {
+  "delete-candidate": "삭제 후보",
+  "deletion-candidate": "삭제 후보",
+  "ban-candidate": "차단 후보",
+  "block-candidate": "차단 후보",
+  "hold": "보류",
+  "review": "보류",
+  "human-review": "보류",
+  "manual-review": "보류",
+  "notice": "공지",
+  "announcement": "공지",
+  "bot-command-candidate": "특갤봇 명령 후보",
+  "copy-bot-command": "특갤봇 명령 후보"
+};
+
+function normalizeIssueType(value: unknown): IssueTypeValue | undefined {
+  if (issueTypeSchema.safeParse(value).success) return value as IssueTypeValue;
+  return issueTypeAliases[aliasKey(value)];
+}
+
+function normalizeRecommendedActionType(value: unknown): RecommendedActionTypeValue {
+  if (recommendedActionTypeSchema.safeParse(value).success) return value as RecommendedActionTypeValue;
+  return recommendedActionTypeAliases[aliasKey(value)] ?? "보류";
+}
+
+function normalizeJudgeCardEnums(input: unknown): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const card = input as Record<string, unknown>;
+  const normalized: Record<string, unknown> = { ...card };
+
+  if (Array.isArray(card.issue_types)) {
+    normalized.issue_types = card.issue_types
+      .map(normalizeIssueType)
+      .filter((value): value is IssueTypeValue => Boolean(value));
+  }
+
+  if (Array.isArray(card.recommended_actions)) {
+    normalized.recommended_actions = card.recommended_actions.map((action) => {
+      if (!action || typeof action !== "object" || Array.isArray(action)) return action;
+      const actionObject = action as Record<string, unknown>;
+      return {
+        ...actionObject,
+        type: normalizeRecommendedActionType(actionObject.type)
+      };
+    });
+  }
+
+  return normalized;
+}
+
 export function validateJudgeCard(input: unknown): JudgmentCard {
   const parsed = typeof input === "string" ? parseJsonObject(input) : input;
-  return judgmentCardSchema.parse(parsed) as JudgmentCard;
+  return judgmentCardSchema.parse(normalizeJudgeCardEnums(parsed)) as JudgmentCard;
 }

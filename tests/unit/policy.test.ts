@@ -11,6 +11,23 @@ const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const jsonPath = path.join(repoRoot, "dcinside_manager_posts_thesingularity_2026-06-02.json");
 const mdPath = path.join(repoRoot, "dcinside_manager_report_thesingularity_2026-06-02.md");
 
+function observationFor(title: string, bodyText: string) {
+  return {
+    url: "https://gall.dcinside.com/mgallery/board/view/?id=thesingularity&no=999999",
+    title,
+    galleryId: "thesingularity",
+    postNo: "999999",
+    bodyText,
+    comments: [],
+    images: [],
+    links: [],
+    metadata: {},
+    selectedText: "",
+    viewportText: bodyText,
+    clickableLabels: []
+  };
+}
+
 describe("policy corpus", () => {
   it("discovers the structured JSON corpus even when the report markdown is provided", async () => {
     const discovered = await discoverPolicyPath({ cwd: repoRoot, requestedPath: mdPath });
@@ -61,12 +78,36 @@ describe("policy corpus", () => {
         rule.guidance.includes("7~31일") &&
         rule.guidance.includes("1일 또는 6시간")
       ))).toBe(true);
+      expect(corpus.rules?.some((rule) => rule.rule_id === "seed-2026-06-13-reference-standard#compact" && rule.category === "레퍼런스 기준")).toBe(true);
+      expect(corpus.rules?.some((rule) => rule.rule_id === "seed-2026-06-13-nickname-clique-impersonation#compact" && rule.category === "닉언/친목/사칭")).toBe(true);
+      expect(corpus.rules?.some((rule) => rule.rule_id === "seed-2026-06-13-allowed-exceptions#compact" && rule.category === "허용 예외")).toBe(true);
       expect(corpus.rules?.flatMap((rule) => rule.tags)).not.toContain("오탐방지");
       expect(corpus.documents.some((doc) => doc.rule_id.includes("nickcon"))).toBe(false);
-      expect(corpus.documents.flatMap((doc) => doc.tags)).not.toContain("닉언콘/친목");
       await expect(access(indexPath)).rejects.toThrow();
     } finally {
       await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("retrieves 2026-06-13 public policy evidence for newly covered rule categories", async () => {
+    const corpus = await ingestPolicyCorpus({ sourcePath: jsonPath });
+    const cases = [
+      ["종교와 음모론", "BCI는 짐승의 표다. 빌 게이츠가 백신에 베리칩을 삽입했다는 음모론과 종교 떡밥입니다.", "종교/음모론"],
+      ["반과학과 직업 비하", "전자레인지는 발암물질을 생성한다. 특정 직업 종사자는 무조건 틀렸다는 반과학 유사과학 직업 비하 글입니다.", "반과학/유사과학"],
+      ["레퍼런스 없는 선형글", "AGI는 불가능하다. 기술적 특이점은 2045년 이후에나 온다. 레퍼런스 없는 선형글입니다.", "선형글/레퍼런스 부족"],
+      ["닉언 친목 사칭", "특정 닉네임을 부르며 사적 친분을 과시하고 다른 이용자를 사칭하는 닉언 친목질 글입니다.", "닉언/친목/사칭"],
+      ["주식 코인 투자", "AI 회사 주식 매수 매도와 코인 투자 수익률을 이야기하는 주식 코인 투자 글입니다.", "주식/코인/투자"],
+      ["국뽕 출산율 혐오", "국뽕 일뽕 중뽕 출산율 혐한 국까 떡밥을 섞어 과열시키는 글입니다.", "국뽕/출산율/혐오떡밥"],
+      ["정치 지역 성별 혐오", "국내외 정치 지지 조롱, 지역드립, 성별 혐오가 섞인 글입니다.", "정치/지역/성별혐오"],
+      ["타 갤러리 언급", "타 갤러리와 타 커뮤니티를 언급하며 좌표와 조롱을 유도하는 글입니다.", "타갤/타커뮤 언급"],
+      ["허위사실 유포", "근거 없는 허위사실을 유포해 특정 인물이나 집단의 이미지를 저해하는 글입니다.", "허위사실/이미지 저해"],
+      ["금지 떡밥", "신세한탄 우울글 망상글 체감글 기본소득 토크나이저 숫자 비교 정체불명 X 찌라시입니다.", "금지 떡밥"],
+      ["허용 예외", "사실에 기반한 완장 비판, 현재 AI 기술에 대한 비판, 단순 욕설입니다.", "허용 예외"]
+    ] as const;
+
+    for (const [title, bodyText, category] of cases) {
+      const evidence = retrievePolicyEvidence(corpus, observationFor(title, bodyText), 10);
+      expect(evidence.some((item) => item.category === category && item.rule_id.startsWith("seed-2026-06-13-"))).toBe(true);
     }
   });
 
@@ -93,11 +134,11 @@ describe("policy corpus", () => {
     expect(evidence.every((item) => item.guidance && item.quote)).toBe(true);
     expect(evidence.every((item) => item.excerpt.length <= 220)).toBe(true);
     expect(evidence.some((item) => item.rule_id.includes("nickcon"))).toBe(false);
-    expect(evidence.flatMap((item) => item.tags)).not.toContain("닉언콘/친목");
+    expect(evidence.some((item) => item.category === "닉언/친목/사칭")).toBe(true);
     expect(evidence.every((item) => item.excerpt.length > 10)).toBe(true);
   });
 
-  it("retrieves targeted con-use escalation criteria without restoring nickname-con blanket rules", async () => {
+  it("retrieves targeted con-use escalation criteria alongside the current nickname and clique rule", async () => {
     const corpus = await ingestPolicyCorpus({ sourcePath: jsonPath });
     const evidence = retrievePolicyEvidence(corpus, {
       url: "https://gall.dcinside.com/mgallery/board/view/?id=thesingularity&no=999998",
@@ -120,7 +161,7 @@ describe("policy corpus", () => {
     expect(targetedConRule?.excerpt).toContain("7~31일");
     expect(targetedConRule?.excerpt).toContain("1일 또는 6시간");
     expect(evidence.some((item) => item.rule_id.includes("nickcon"))).toBe(false);
-    expect(evidence.flatMap((item) => item.tags)).not.toContain("닉언콘/친목");
+    expect(evidence.some((item) => item.category === "닉언/친목/사칭")).toBe(true);
   });
 
   it("does not over-tag generic manager posts as mod attacks or image risk", async () => {

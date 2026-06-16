@@ -52,7 +52,7 @@ const evidence: PolicyEvidence[] = [
 ];
 
 describe("judge schema, prompt, audit, and safety", () => {
-  it("builds an LLM prompt with direct page observation and policy source post numbers", () => {
+  it("builds a text-only page LLM prompt with direct page observation and policy source post numbers", () => {
     const prompt = createJudgePrompt({ observation, evidence, model: "test-model", visionEnabled: false });
 
     expect(prompt.user).toContain("정떡 섞인 닉언콘 글");
@@ -61,12 +61,14 @@ describe("judge schema, prompt, audit, and safety", () => {
     expect(prompt.user).toContain("1224888");
     expect(prompt.user).toContain("final_human_decision_required");
     expect(prompt.user).toContain("텍스트/alt/문맥 기반, 시각 확인 필요");
-    expect(prompt.user).toContain("단순 이모티콘");
+    expect(prompt.user).toContain("2026-06-13");
+    expect(prompt.user).toContain("닉언/친목/사칭");
+    expect(prompt.user).toContain("레퍼런스 없는 선형글");
+    expect(prompt.user).toContain("사실에 기반한 완장 비판");
     expect(prompt.user).toContain("저격성 콘사용");
     expect(prompt.user).toContain("7~31일");
     expect(prompt.user).toContain("1일 또는 6시간");
     expect(prompt.user).toContain("운영진 앵커 + 공격/해임/친목/권력남용 프레임");
-    expect(prompt.user).not.toContain("닉언콘/친목 |");
   });
 
   it("uses compact policy evidence in prompts instead of verbose retrieved objects", () => {
@@ -96,8 +98,8 @@ describe("judge schema, prompt, audit, and safety", () => {
 
   it("accepts only strict judgment cards that require a final human decision", () => {
     const valid = validateJudgeCard({
-      summary: "정떡 및 특갤봇 명령 후보",
-      issue_types: ["정떡", "특갤봇 명령 후보"],
+      summary: "정떡, 닉언/친목/사칭 및 특갤봇 명령 후보",
+      issue_types: ["정떡", "닉언/친목/사칭", "특갤봇 명령 후보"],
       matched_rules: evidence,
       llm_reasoning: "현재 페이지와 1224888, 1226405 근거를 함께 보면 조치 후보입니다.",
       uncertainty: "중간",

@@ -1,6 +1,6 @@
-# Sing_Maven Copilot
+# DCInside Maven Copilot
 
-Read-only Chrome Extension + local Fastify backend for LLM-first moderation review of `특이점이 온다` gallery pages.
+Read-only Chrome Extension + local Fastify backend for LLM-first moderation review of DCInside `특이점이 온다` gallery pages.
 
 The extension observes the page the human is already viewing, sends a redacted DOM/screenshot observation to the local backend, retrieves policy evidence from the local manager-post corpus, and asks an OpenAI-compatible LLM for a strict judgment card. It never clicks delete, ban, submit, post, comment, confirm, save, or apply.
 
@@ -75,7 +75,7 @@ Use the bottom `현재 맥락에서 질문` box to ask follow-up questions with 
 
 When a comment UID is not present in the DOM, the extension tries a safe helper observation: click the comment nickname, open `이용자 메모`, and read titles such as `indoor4684 메모`. If that fails, member risk falls back to nickname/IP.
 
-The `닉언콘/친목` seed rule is disabled. Ordinary emoticons, cones, stickers, or nickname mentions alone must not produce delete or ban candidates.
+The 2026-06-13 public rules are layered in as seed policy evidence. `닉언/친목/사칭` is a supported policy category, but the LLM must cite current-page evidence and keep final decisions human-only. For comments, nickname mention risk and clique/네임드화 risk are reported separately so ordinary mentions are not confused with stronger 친목 evidence.
 
 After the native host is installed, the backend no longer has to be started manually. If `http://127.0.0.1:8787` is down, the side panel calls Chrome Native Messaging host `com.dcinside_maven_copilot.backend`, which starts the local Fastify backend and retries the judgment request.
 
